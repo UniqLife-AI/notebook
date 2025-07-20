@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scraper
+.scraignore
+project_scraper.py
+scrape_groups.config
+context.txt
+/.ai-docs/
