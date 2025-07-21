@@ -10,6 +10,13 @@ export interface FileContentContext {
     content: string;
 }
 
+// ИЗМЕНЕНИЕ: Добавлена утилита для очистки имени файла от недопустимых символов
+const sanitizeFileName = (name: string): string => {
+    // Удаляем недопустимые символы и обрезаем пробелы
+    return name.replace(/[<>:"/\\|?*]/g, '').trim();
+};
+
+
 interface ChatSessionState {
     sessions: ChatSession[];
     activeSessionId: string | null;
@@ -22,8 +29,13 @@ interface ChatSessionState {
     setActiveSessionId: (id: string | null) => void;
     getActiveSession: () => ChatSession | undefined;
     updateSessionMessages: (sessionId: string, messages: Message[]) => void;
-    createNewSession: (fileName: string) => Promise<void>;
+    createNewSession: (fileName:string) => Promise<void>;
     updateNoteContent: (sessionId: string, newContent: string) => Promise<void>;
+
+    createNewNote: (fileName: string) => Promise<void>;
+    openOrCreateNoteByName: (noteName: string) => Promise<void>;
+    // ИЗМЕНЕНИЕ: Добавлен новый метод для проверки существования заметки
+    doesNoteExist: (noteName: string) => boolean;
 
     openProject: () => Promise<void>;
     closeProject: () => Promise<void>;
@@ -82,11 +94,9 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         const session = get().sessions.find(s => s.id === sessionId);
         if (!session) return;
         
-        // Создаем обновленную сессию для консистентности данных
         const updatedSession: ChatSession = {
             ...session,
             messages,
-            // Обновляем rawContent на основе новых сообщений
             rawContent: parserService.stringifySession({ ...session, messages })
         };
 
@@ -98,18 +108,18 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     },
 
     createNewSession: async (fileName) => {
-        const newFileName = fileName.endsWith('.md') ? fileName : `${fileName}.md`;
+        const sanitizedName = sanitizeFileName(fileName);
+        const newFileName = sanitizedName.endsWith('.md') ? sanitizedName : `${sanitizedName}.md`;
         if (get().sessions.some(s => s.id === newFileName)) {
             set({ activeSessionId: newFileName });
             return;
         }
         
-        // ИСПРАВЛЕНИЕ: Создаем объект, который будет корректно распознан парсером
         const initialContent = '### User\n\n';
         const initialMessage: Message = {
             id: `msg-${Date.now()}`,
             role: 'user',
-            content: '' // Пустой контент для нового чата
+            content: ''
         };
 
         const newSession: ChatSession = {
@@ -127,6 +137,50 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         }));
         
         await fileSystemService.writeFile(newFileName, initialContent);
+    },
+
+    createNewNote: async (fileName) => {
+        const sanitizedName = sanitizeFileName(fileName);
+        const newFileName = sanitizedName.endsWith('.md') ? sanitizedName : `${sanitizedName}.md`;
+        if (get().sessions.some(s => s.id === newFileName)) {
+            set({ activeSessionId: newFileName });
+            return;
+        }
+
+        const initialContent = '';
+        const newSession = parserService.parseFile(newFileName, initialContent);
+        
+        set(state => ({
+            sessions: [...state.sessions, newSession],
+            activeSessionId: newFileName
+        }));
+
+        await fileSystemService.writeFile(newFileName, initialContent);
+    },
+    
+    // ИЗМЕНЕНИЕ: Новая функция для проверки существования заметки
+    doesNoteExist: (noteName) => {
+        const sanitizedName = sanitizeFileName(noteName);
+        return get().sessions.some(
+            s => s.label.toLowerCase() === sanitizedName.toLowerCase()
+        );
+    },
+
+    openOrCreateNoteByName: async (noteName) => {
+        const sanitizedName = sanitizeFileName(noteName);
+        if (!sanitizedName) return; // Не создаем заметки с пустым именем
+
+        if (get().doesNoteExist(sanitizedName)) {
+            const existingSession = get().sessions.find(
+                s => s.label.toLowerCase() === sanitizedName.toLowerCase()
+            );
+            if (existingSession) {
+                set({ activeSessionId: existingSession.id });
+            }
+        } else {
+            const newFileName = `${sanitizedName}.md`;
+            await get().createNewNote(newFileName);
+        }
     },
 
     updateNoteContent: async (sessionId, newContent) => {
