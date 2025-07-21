@@ -31,12 +31,10 @@ export default function FocusView() {
     const [isLogPanelVisible, setIsLogPanelVisible] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isNewChatDialogOpen, setIsNewChatDialogOpen] = useState(false);
-    // ИЗМЕНЕНИЕ: Новое состояние для передачи контекста в создаваемый чат
     const [contextForNextChat, setContextForNextChat] = useState<FileContentContext[]>([]);
 
     const { isInitialized, needsSetup, setInitialized, setNeedsSetup } = useSettingsStore();
     const { toggle: toggleCommandPalette } = useCommandPaletteStore();
-    // ИЗМЕНЕНИЕ: Получаем дополнительные методы из хранилища
     const { createNewSession, loadSessions, getActiveSession, addFileToContext } = useChatSessionStore();
 
     useEffect(() => {
@@ -88,7 +86,6 @@ export default function FocusView() {
         panel.isCollapsed() ? panel.expand() : panel.collapse();
     };
 
-    // ИЗМЕНЕНИЕ: Новый обработчик для запуска создания чата с контекстом
     const handleInitiateChatWithContext = (fileToAdd: FileContentContext) => {
         const activeNote = getActiveSession();
         if (!activeNote || activeNote.type !== 'note') return;
@@ -102,24 +99,21 @@ export default function FocusView() {
         setIsNewChatDialogOpen(true);
     };
 
-    // ИЗМЕНЕНИЕ: Обновленный обработчик создания чата
-    const handleCreateChat = async (fileName: string) => {
+    const handleCreateChatFromDialog = async (fileName: string) => {
         setIsNewChatDialogOpen(false);
         
         await createNewSession(fileName);
         
-        // После создания чата, если есть ожидающий контекст, добавляем его
         if (contextForNextChat.length > 0) {
             for (const file of contextForNextChat) {
                 addFileToContext(file);
             }
-            setContextForNextChat([]); // Очищаем
+            setContextForNextChat([]);
         }
     };
     
-    // ИЗМЕНЕНИЕ: Обработчик для простого создания чата (без контекста)
-    const handleNewChat = () => {
-        setContextForNextChat([]); // Убеждаемся, что контекст пуст
+    const handleNewChatFromCommand = () => {
+        setContextForNextChat([]);
         setIsNewChatDialogOpen(true);
     };
 
@@ -133,12 +127,16 @@ export default function FocusView() {
 
     return (
         <Box sx={{ height: '100vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
-            <AppHeader onSettingsClick={() => setIsSettingsOpen(true)} />
+            {/* ИЗМЕНЕНИЕ: Передаем новый обработчик в AppHeader */}
+            <AppHeader 
+                onSettingsClick={() => setIsSettingsOpen(true)} 
+                onNewChatClick={() => createNewSession()}
+            />
             <ChatSettingsDialog open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
-            <NewChatDialog open={isNewChatDialogOpen} onClose={() => setIsNewChatDialogOpen(false)} onCreate={handleCreateChat} />
+            <NewChatDialog open={isNewChatDialogOpen} onClose={() => setIsNewChatDialogOpen(false)} onCreate={handleCreateChatFromDialog} />
             <CommandPalette 
                 onOpenSettings={() => setIsSettingsOpen(true)} 
-                onNewChat={handleNewChat}
+                onNewChat={handleNewChatFromCommand}
                 onInitiateChatWithContext={handleInitiateChatWithContext}
             />
 
@@ -151,11 +149,11 @@ export default function FocusView() {
                     <Panel defaultSize={60} minSize={30}>
                         <PanelGroup direction="vertical">
                             <Panel defaultSize={70} minSize={20}>
+                                {/* ИЗМЕНЕНИЕ: Убираем onNewChat из MainView, так как он больше не нужен */}
                                 <MainView
                                     isLogPanelVisible={isLogPanelVisible}
                                     onToggleLogPanel={handleToggleLogPanel}
                                     onOpenSettings={() => setIsSettingsOpen(true)}
-                                    onNewChat={handleNewChat}
                                 />
                             </Panel>
                             <PanelResizeHandle style={{ height: '5px', background: isLogPanelVisible ? '#e0e0e0' : 'transparent', cursor: 'row-resize' }} />

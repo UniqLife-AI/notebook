@@ -20,7 +20,7 @@ import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import { useApiKeyStore } from '@/store/useApiKeyStore';
 import { useChatSettingsStore } from '@/store/useChatSettingsStore';
 import { useChatSessionStore, FileContentContext } from '@/store/useChatSessionStore';
-import { useNotifier } from '@/hooks/useNotifier'; // ИЗМЕНЕНИЕ: Импортируем наш хук
+import { useNotifier } from '@/hooks/useNotifier';
 
 const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as string); reader.onerror = reject; reader.readAsDataURL(file); });
 
@@ -35,7 +35,6 @@ const ChatMessage = ({ msg }: { msg: Message }) => {
                 {messageData?.imageUrl && (<IconButton onClick={() => setModalImage(messageData.imageUrl || null)} sx={{ p: 0 }}> <Avatar src={messageData.imageUrl} variant="rounded" sx={{ width: 120, height: 120, mb: 1 }} /> </IconButton>)}
                 
                 <Typography component="div" sx={{ 
-                    // ИСПРАВЛЕНИЕ: Стили для переноса длинных строк
                     whiteSpace: 'pre-wrap', 
                     wordBreak: 'break-word',
                     fontFamily: 'monospace', 
@@ -55,18 +54,19 @@ const ChatMessage = ({ msg }: { msg: Message }) => {
 };
 
 
+// ИЗМЕНЕНИЕ: Убрали onNewChat из пропсов
 interface ChatPanelProps {
     isLogPanelVisible: boolean;
     onToggleLogPanel: () => void;
     onOpenSettings: () => void;
-    onNewChat: () => void;
 }
 
 interface TokenUsage {
     total_tokens: number;
 }
 
-export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings, onNewChat }: ChatPanelProps) => {
+// ИЗМЕНЕНИЕ: Убрали onNewChat из деструктуризации
+export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings }: ChatPanelProps) => {
     const { apiKey } = useApiKeyStore();
     const settings = useChatSettingsStore();
     const { 
@@ -77,7 +77,7 @@ export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings,
         projectFileTreeContext: state.projectFileTreeContext,
         setProjectFileTreeContext: state.setProjectFileTreeContext,
     }));
-    const { notifyError } = useNotifier(); // ИЗМЕНЕНИЕ: Получаем функцию для показа ошибок
+    const { notifyError } = useNotifier();
 
     const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
     const [pastedImage, setPastedImage] = useState<string | null>(null);
@@ -90,9 +90,7 @@ export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings,
         api: '/api/chat',
         body: { settings },
         onFinish: (message) => { /* ... */ },
-        // ИЗМЕНЕНИЕ: Заменяем alert на notifyError
         onError: (error) => {
-            // Упрощаем сообщение для пользователя
             const userFriendlyMessage = error.message.includes('429') 
                 ? 'Ошибка: Превышен лимит запросов к API. Проверьте ваш тарифный план и лимиты.'
                 : `Произошла ошибка: ${error.message}`;
@@ -179,11 +177,7 @@ export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings,
                         <TerminalIcon color={isLogPanelVisible ? "primary" : "action"} />
                     </IconButton>
                 </Tooltip>
-                <Tooltip title="Новый чат...">
-                    <IconButton onClick={onNewChat} sx={{ mx: 1 }}>
-                        <AddCommentOutlinedIcon />
-                    </IconButton>
-                </Tooltip>
+                {/* ИЗМЕНЕНИЕ: Кнопка "Новый чат" удалена отсюда */}
             </Box>
 
             <Box ref={chatContainerRef} sx={{ flexGrow: 1, overflowY: 'auto', p: 3, minHeight: 0 }}>

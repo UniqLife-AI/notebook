@@ -10,7 +10,6 @@ export interface FileContentContext {
     content: string;
 }
 
-// ИЗМЕНЕНИЕ: Тип для хранения информации об обратной ссылке
 export interface Backlink {
     sourceNote: string;
     type: string | null;
@@ -20,10 +19,8 @@ const sanitizeFileName = (name: string): string => {
     return name.replace(/[<>:"/\\|?*]/g, '').trim();
 };
 
-// ИЗМЕНЕНИЕ: Регулярное выражение теперь захватывает и семантический тип
 const WIKI_LINK_REGEX = /\[\[(?:([a-zA-Z\s]+)::)?([^|#\]\n]+)(?:#([^|\]\n]+))?(?:\|([^\]\n]+))?\]\]/g;
 
-// ИЗМЕНЕНИЕ: Функция теперь строит индекс с семантическими типами
 const buildBacklinksIndex = (sessions: ChatSession[]): Map<string, Set<Backlink>> => {
     const index = new Map<string, Set<Backlink>>();
     
@@ -57,7 +54,6 @@ interface ChatSessionState {
     projectName: string | null;
     projectFileTreeContext: string | null;
     fileContentContext: FileContentContext[];
-    // ИЗМЕНЕНИЕ: Тип индекса обновлен
     backlinksIndex: Map<string, Set<Backlink>>;
     scrollToHeading: string | null;
 
@@ -65,13 +61,13 @@ interface ChatSessionState {
     setActiveSessionId: (id: string | null) => void;
     getActiveSession: () => ChatSession | undefined;
     updateSessionMessages: (sessionId: string, messages: Message[]) => void;
-    createNewSession: (fileName:string) => Promise<void>;
+    // ИЗМЕНЕНИЕ: Сигнатура изменена для опционального имени файла
+    createNewSession: (fileName?: string) => Promise<void>;
     updateNoteContent: (sessionId: string, newContent: string) => Promise<void>;
 
     createNewNote: (fileName: string) => Promise<void>;
     openOrCreateNoteByName: (noteName: string, heading: string | null) => Promise<void>;
     doesNoteExist: (noteName: string) => boolean;
-    // ИЗМЕНЕНИЕ: Геттер теперь возвращает массив объектов Backlink
     getBacklinksForNote: (noteName: string) => Backlink[];
     clearScrollToHeading: () => void;
 
@@ -159,27 +155,48 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         await fileSystemService.writeFile(sessionId, updatedSession.rawContent);
     },
 
+    // ИЗМЕНЕНИЕ: Логика создания чата полностью переработана
     createNewSession: async (fileName) => {
-        const sanitizedName = sanitizeFileName(fileName);
-        const newFileName = sanitizedName.endsWith('.md') ? sanitizedName : `${sanitizedName}.md`;
-        if (get().sessions.some(s => s.id === newFileName)) {
-            set({ activeSessionId: newFileName });
+        let newFileName = fileName;
+
+        // Если имя не предоставлено, генерируем его
+        if (!newFileName) {
+            let i = 1;
+            do {
+                newFileName = `Chat-${i}.md`;
+                i++;
+            } while (get().sessions.some(s => s.id === newFileName));
+        } else {
+            newFileName = newFileName.endsWith('.md') ? newFileName : `${newFileName}.md`;
+        }
+        
+        const sanitizedName = sanitizeFileName(newFileName);
+        if (get().sessions.some(s => s.id === sanitizedName)) {
+            set({ activeSessionId: sanitizedName });
             return;
         }
         
-        const initialContent = '### User\n\n';
-        const newSession = parserService.parseFile(newFileName, initialContent);
+        // ИСПРАВЛЕНИЕ: Чат создается пустым, без начальных сообщений
+        const initialContent = '';
+        const newSession: ChatSession = {
+            id: sanitizedName,
+            label: sanitizedName.replace('.md', ''),
+            type: 'chat',
+            rawContent: initialContent,
+            metadata: {},
+            messages: [], // Пустой массив сообщений
+        };
 
         const newSessions = [...get().sessions, newSession];
         const newIndex = buildBacklinksIndex(newSessions);
 
         set({
             sessions: newSessions,
-            activeSessionId: newFileName,
+            activeSessionId: sanitizedName,
             backlinksIndex: newIndex
         });
         
-        await fileSystemService.writeFile(newFileName, initialContent);
+        await fileSystemService.writeFile(sanitizedName, initialContent);
     },
 
     createNewNote: async (fileName) => {

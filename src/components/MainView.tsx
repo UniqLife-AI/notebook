@@ -6,11 +6,11 @@ import { ChatPanel } from "./ChatPanel";
 import { NoteEditor } from "./NoteEditor";
 import { Box, Typography } from "@mui/material";
 
+// ИЗМЕНЕНИЕ: Убираем onNewChat из пропсов
 interface MainViewProps {
     isLogPanelVisible: boolean;
     onToggleLogPanel: () => void;
     onOpenSettings: () => void;
-    onNewChat: () => void;
 }
 
 export const MainView = (props: MainViewProps) => {
@@ -28,5 +28,6 @@ export const MainView = (props: MainViewProps) => {
         return <NoteEditor />;
     }
 
+    // ИЗМЕНЕНИЕ: Больше не передаем onNewChat в ChatPanel
     return <ChatPanel {...props} />;
 };
