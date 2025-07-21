@@ -18,7 +18,7 @@ import { ChatSettingsDialog } from './ChatSettingsDialog';
 import { CommandPalette } from './CommandPalette';
 import { useCommandPaletteStore } from '@/store/useCommandPaletteStore';
 import { NewChatDialog } from './NewChatDialog';
-import { useChatSessionStore } from '@/store/useChatSessionStore';
+import { useChatSessionStore, type FileContentContext } from '@/store/useChatSessionStore';
 import { MainView } from './MainView';
 
 export default function FocusView() {
@@ -31,11 +31,13 @@ export default function FocusView() {
     const [isLogPanelVisible, setIsLogPanelVisible] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isNewChatDialogOpen, setIsNewChatDialogOpen] = useState(false);
+    // ИЗМЕНЕНИЕ: Новое состояние для передачи контекста в создаваемый чат
+    const [contextForNextChat, setContextForNextChat] = useState<FileContentContext[]>([]);
 
     const { isInitialized, needsSetup, setInitialized, setNeedsSetup } = useSettingsStore();
     const { toggle: toggleCommandPalette } = useCommandPaletteStore();
-    // ИЗМЕНЕНИЕ: Получаем loadSessions здесь
-    const { createNewSession, loadSessions } = useChatSessionStore();
+    // ИЗМЕНЕНИЕ: Получаем дополнительные методы из хранилища
+    const { createNewSession, loadSessions, getActiveSession, addFileToContext } = useChatSessionStore();
 
     useEffect(() => {
         const down = (e: KeyboardEvent) => {
@@ -55,7 +57,6 @@ export default function FocusView() {
             const success = await fileSystemService.initialize();
             if (success) {
                 setNeedsSetup(false);
-                // ИЗМЕНЕНИЕ: Загружаем сессии только после успешной инициализации
                 await loadSessions(); 
             } else {
                 setNeedsSetup(true);
@@ -63,7 +64,6 @@ export default function FocusView() {
             setInitialized(true);
         };
         initializeApp();
-    // Добавляем loadSessions в массив зависимостей
     }, [setInitialized, setNeedsSetup, loadSessions]);
     
     const handleToggleLogPanel = () => {
@@ -88,6 +88,41 @@ export default function FocusView() {
         panel.isCollapsed() ? panel.expand() : panel.collapse();
     };
 
+    // ИЗМЕНЕНИЕ: Новый обработчик для запуска создания чата с контекстом
+    const handleInitiateChatWithContext = (fileToAdd: FileContentContext) => {
+        const activeNote = getActiveSession();
+        if (!activeNote || activeNote.type !== 'note') return;
+
+        const initialContext = [
+            { fileName: activeNote.id, content: activeNote.rawContent },
+            fileToAdd
+        ];
+        
+        setContextForNextChat(initialContext);
+        setIsNewChatDialogOpen(true);
+    };
+
+    // ИЗМЕНЕНИЕ: Обновленный обработчик создания чата
+    const handleCreateChat = async (fileName: string) => {
+        setIsNewChatDialogOpen(false);
+        
+        await createNewSession(fileName);
+        
+        // После создания чата, если есть ожидающий контекст, добавляем его
+        if (contextForNextChat.length > 0) {
+            for (const file of contextForNextChat) {
+                addFileToContext(file);
+            }
+            setContextForNextChat([]); // Очищаем
+        }
+    };
+    
+    // ИЗМЕНЕНИЕ: Обработчик для простого создания чата (без контекста)
+    const handleNewChat = () => {
+        setContextForNextChat([]); // Убеждаемся, что контекст пуст
+        setIsNewChatDialogOpen(true);
+    };
+
     if (!isInitialized) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /></Box>;
     }
@@ -100,8 +135,12 @@ export default function FocusView() {
         <Box sx={{ height: '100vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
             <AppHeader onSettingsClick={() => setIsSettingsOpen(true)} />
             <ChatSettingsDialog open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
-            <NewChatDialog open={isNewChatDialogOpen} onClose={() => setIsNewChatDialogOpen(false)} onCreate={createNewSession} />
-            <CommandPalette onOpenSettings={() => setIsSettingsOpen(true)} onNewChat={() => setIsNewChatDialogOpen(true)} />
+            <NewChatDialog open={isNewChatDialogOpen} onClose={() => setIsNewChatDialogOpen(false)} onCreate={handleCreateChat} />
+            <CommandPalette 
+                onOpenSettings={() => setIsSettingsOpen(true)} 
+                onNewChat={handleNewChat}
+                onInitiateChatWithContext={handleInitiateChatWithContext}
+            />
 
             <Box sx={{ flexGrow: 1, minHeight: 0 }}>
                 <PanelGroup direction="horizontal">
@@ -116,7 +155,7 @@ export default function FocusView() {
                                     isLogPanelVisible={isLogPanelVisible}
                                     onToggleLogPanel={handleToggleLogPanel}
                                     onOpenSettings={() => setIsSettingsOpen(true)}
-                                    onNewChat={() => setIsNewChatDialogOpen(true)}
+                                    onNewChat={handleNewChat}
                                 />
                             </Panel>
                             <PanelResizeHandle style={{ height: '5px', background: isLogPanelVisible ? '#e0e0e0' : 'transparent', cursor: 'row-resize' }} />
