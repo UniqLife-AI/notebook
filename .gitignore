@@ -46,3 +46,4 @@ project_scraper.py
 scrape_groups.config
 context.txt
 /.ai-docs/
+/.ai-notebook/

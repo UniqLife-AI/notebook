@@ -1,7 +1,9 @@
+// File Name: src/components/ChatSettingsDialog.tsx
+
 import { Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, Slider, Typography, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import { useApiKeyStore } from "@/store/useApiKeyStore";
 import { useChatSettingsStore } from "@/store/useChatSettingsStore";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Props {
   open: boolean;
@@ -15,6 +17,14 @@ export const ChatSettingsDialog = ({ open, onClose }: Props) => {
   const [localApiKey, setLocalApiKey] = useState(apiKey || '');
   const [localModel, setLocalModel] = useState(model);
   const [localTemp, setLocalTemp] = useState(temperature);
+
+  useEffect(() => {
+    if (open) {
+      setLocalApiKey(apiKey || '');
+      setLocalModel(model);
+      setLocalTemp(temperature);
+    }
+  }, [open, apiKey, model, temperature]);
 
   const handleSave = () => {
     setApiKey(localApiKey);
@@ -37,15 +47,19 @@ export const ChatSettingsDialog = ({ open, onClose }: Props) => {
           onChange={(e) => setLocalApiKey(e.target.value)}
         />
         <FormControl fullWidth margin="normal">
-          <InputLabel>Модель</InputLabel>
-          <Select value={localModel} label="Модель" onChange={(e) => setLocalModel(e.target.value)}>
+          <InputLabel id="model-select-label">Модель</InputLabel>
+          <Select
+            labelId="model-select-label"
+            value={localModel}
+            label="Модель"
+            onChange={(e) => setLocalModel(e.target.value)}
+          >
             <MenuItem value="gemini-1.5-pro-latest">Gemini 1.5 Pro</MenuItem>
             <MenuItem value="gemini-1.5-flash-latest">Gemini 1.5 Flash</MenuItem>
           </Select>
         </FormControl>
         <Typography gutterBottom sx={{mt: 2}}>Температура: {localTemp}</Typography>
-        {/* ИЗМЕНЕНИЕ: Максимум теперь 2.0 */}
-        <Slider value={localTemp} onChange={(_, value) => setLocalTemp(value as number)} min={0} max={2} step={0.1} />
+        <Slider value={localTemp} onChange={(_, value) => setLocalTemp(value as number)} min={0} max={2} step={0.1} />0
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Отмена</Button>

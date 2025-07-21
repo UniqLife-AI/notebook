@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "types": ["node", "@types/react", "@types/react-dom", "wicg-file-system-access"],
     "lib": [
       "dom",
       "dom.iterable",
