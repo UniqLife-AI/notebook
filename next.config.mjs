@@ -1,6 +1,9 @@
+// File Name: next.config.mjs
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Здесь могут быть ваши будущие настройки
+    // ИЗМЕНЕНИЕ: Добавляем эту строку
+    // output: 'export',
 };
 
 export default nextConfig;

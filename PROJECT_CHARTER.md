@@ -1,13 +1,13 @@
 # Project Charter: Local-first LLM Notebook
-### v3.0 (Final)
+### v3.0 (Final) - Amendment 1: Shift to Desktop Application
 
-This document is the final and approved charter for the `Local-first LLM Notebook` project, an integrated thinking environment.
+This document is the final and approved charter for the `Local-first LLM Notebook` project, an integrated thinking environment. This amendment reflects the architectural shift from a web application to a native desktop application.
 
 ---
 
 ### 1. Core Vision & Mission
 
-We are building a **local-first web application** that serves as an **Integrated Thinking Environment (ITE)** for **technical professionals and researchers**. We are blurring the lines between knowledge management, software development, and AI interaction.
+We are building a **local-first desktop application** that serves as an **Integrated Thinking Environment (ITE)** for **technical professionals and researchers**. We are blurring the lines between knowledge management, software development, and AI interaction.
 
 **Mission:** To provide developers with a unified workspace for maintaining "lab journals," documenting research, prototyping ideas, and conducting multiple, parallel dialogues with AI, all while working directly with a local folder of project files.
 
@@ -17,13 +17,15 @@ We are building a **local-first web application** that serves as an **Integrated
 
 ### 2. Technology Stack
 
-* **Application Type:** Progressive Web App (PWA).
-* **Framework:** Next.js (App Router).
-* **Data Storage (Single Source of Truth):** The user's local file system (via File System Access API). All notes and chats are portable `.md` files.
-* **Data Storage (Cache):** IndexedDB (via Dexie.js) for indexing and accelerating access.
-* **State Management:** Zustand.
-* **Styling:** Tailwind CSS.
-* **LLM Integration:** Prioritized support for **local LLMs** (Ollama, LM Studio, etc.) with optional integration for cloud-based APIs.
+*   **Application Type:** Cross-platform Desktop Application.
+*   **Core Framework:** **Tauri** (Rust backend, webview frontend).
+*   **Frontend Framework:** Next.js (App Router, static export).
+*   **Backend Logic (for Terminal):** Go (via Tauri Sidecar).
+*   **Data Storage (Single Source of Truth):** The user's local file system. All notes and chats are portable `.md` files.
+*   **Data Storage (Cache):** IndexedDB for client-side indexing.
+*   **State Management:** Zustand.
+*   **Styling:** Tailwind CSS.
+*   **LLM Integration:** Prioritized support for **local LLMs** (Ollama, LM Studio, etc.) with optional integration for cloud-based APIs.
 
 ---
 
@@ -33,9 +35,9 @@ We are building a **local-first web application** that serves as an **Integrated
     * `id`: `filePath` (the path to the `.md` file).
     * `metadata`: An object parsed from the file's YAML Frontmatter.
     * `links`: A linking system to be implemented in three phases:
-        1.  **MVP:** Standard wiki-links (`[[Note Name]]`) and automatic backlinks.
-        2.  **v1.1:** Links to specific sections (`[[...#Heading]]`) and link aliases (`[[...|display text]]`).
-        3.  **v2.0:** Semantic links (`[[supports::...]]`, `[[refutes::...]]`) to build a true graph of reasoning.
+        1.  **MVP:** Standard wiki-links (`[[Note Name]]`) and automatic backlinks. **(Implemented)**
+        2.  **v1.1:** Links to specific sections (`[[...#Heading]]`) and link aliases (`[[...|display text]]`). **(Implemented)**
+        3.  **v2.0:** Semantic links (`[[supports::...]]`, `[[refutes::...]]`) to build a true graph of reasoning. **(Implemented)**
 
 * **`ChatSession`:**
     * Each session is a discrete `.md` file with a standardized structure (YAML Frontmatter for metadata, headings for `user`/`assistant` roles).
@@ -69,9 +71,9 @@ We are building a **local-first web application** that serves as an **Integrated
 This is a key feature that transforms the application into a development-aware environment.
 
 * **Activation:** The user opens a project's root directory (e.g., a folder containing a `.git` repository).
-* **Integrated Terminal:** The application provides a built-in terminal panel operating in the project's root directory. The user can run any console command (`git`, `npm`, `docker compose`, etc.) without leaving the application.
+* **Integrated Terminal:** The application provides a built-in terminal panel operating in the project's root directory. The user can run any console command (`git`, `npm`, `docker compose`, etc.) without leaving the application. **(UI Implemented, Backend Pending)**
 * **Contextualized AI:** All chats initiated in this mode are automatically aware of the project's context. The LLM can be informed of the file structure, dependencies (`package.json`), etc.
-* **Localized History:** All project-related dialogues are saved to a `.ai-notebook/chats/` sub-folder within the project itself. This makes the entire project, including the intellectual history behind it, fully autonomous and portable.
+* **Localized History:** All project-related dialogues are saved to a `.ai-notebook/chats/` sub-folder within the project itself. This makes the entire project, including the intellectual history behind it, fully autonomous and portable. **(Implemented)**
 
 ---
 
