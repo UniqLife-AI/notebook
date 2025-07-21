@@ -10,6 +10,7 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import React from 'react';
 import { useChatSessionStore } from '@/store/useChatSessionStore';
 import { fileSystemService } from '@/services/FileSystemService';
+import { useNotifier } from '@/hooks/useNotifier';
 
 export const SourcesPanel = ({ children }: { children: React.ReactNode }) => {
     const { 
@@ -28,11 +29,15 @@ export const SourcesPanel = ({ children }: { children: React.ReactNode }) => {
         setProjectFileTreeContext: state.setProjectFileTreeContext,
         projectFileTreeContext: state.projectFileTreeContext
     }));
+    
+    const { notifySuccess } = useNotifier();
 
     const handleScanProject = async () => {
         const tree = await fileSystemService.getProjectFileTree();
         if (tree) {
             setProjectFileTreeContext(tree);
+            // ИЗМЕНЕНИЕ: Текст уведомления изменен для ясности
+            notifySuccess("Структура проекта обновлена.");
         }
     };
     
@@ -47,6 +52,7 @@ export const SourcesPanel = ({ children }: { children: React.ReactNode }) => {
         try {
             const content = await fileSystemService.readFile(fileName);
             addFileToContext({ fileName, content });
+            notifySuccess(`Файл "${fileName}" добавлен в контекст.`);
         } catch (error) {
             console.error(`Failed to read file ${fileName} for context:`, error);
         }
@@ -72,8 +78,19 @@ export const SourcesPanel = ({ children }: { children: React.ReactNode }) => {
                 </Button>
 
                 {isProjectOpen && (
-                    <Button fullWidth variant={projectFileTreeContext ? "contained" : "outlined"} startIcon={<FunctionsIcon />} sx={{ borderColor: '#e0e0e0', color: projectFileTreeContext ? 'white' : 'text.primary', justifyContent: 'flex-start' }} onClick={handleScanProject}>
-                        {projectFileTreeContext ? "Контекст загружен" : "Загрузить контекст"}
+                    <Button 
+                        fullWidth 
+                        variant={projectFileTreeContext ? "contained" : "outlined"} 
+                        startIcon={<FunctionsIcon />} 
+                        sx={{ 
+                            borderColor: '#e0e0e0', 
+                            color: projectFileTreeContext ? 'white' : 'text.primary', 
+                            justifyContent: 'flex-start' 
+                        }} 
+                        onClick={handleScanProject}
+                    >
+                        {/* ИЗМЕНЕНИЕ: Текст кнопки изменен для ясности */}
+                        {projectFileTreeContext ? "Обновить структуру" : "Загрузить структуру"}
                     </Button>
                 )}
                 

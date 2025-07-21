@@ -54,7 +54,6 @@ const ChatMessage = ({ msg }: { msg: Message }) => {
 };
 
 
-// ИЗМЕНЕНИЕ: Убрали onNewChat из пропсов
 interface ChatPanelProps {
     isLogPanelVisible: boolean;
     onToggleLogPanel: () => void;
@@ -65,7 +64,6 @@ interface TokenUsage {
     total_tokens: number;
 }
 
-// ИЗМЕНЕНИЕ: Убрали onNewChat из деструктуризации
 export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings }: ChatPanelProps) => {
     const { apiKey } = useApiKeyStore();
     const settings = useChatSettingsStore();
@@ -156,7 +154,6 @@ export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings 
         
         setInput('');
         setPastedImage(null);
-        setProjectFileTreeContext(null);
         clearFileContext();
     };
 
@@ -177,7 +174,6 @@ export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings 
                         <TerminalIcon color={isLogPanelVisible ? "primary" : "action"} />
                     </IconButton>
                 </Tooltip>
-                {/* ИЗМЕНЕНИЕ: Кнопка "Новый чат" удалена отсюда */}
             </Box>
 
             <Box ref={chatContainerRef} sx={{ flexGrow: 1, overflowY: 'auto', p: 3, minHeight: 0 }}>
@@ -193,7 +189,8 @@ export const ChatPanel = ({ isLogPanelVisible, onToggleLogPanel, onOpenSettings 
                 <Paper sx={{ p: '8px', display: 'flex', flexDirection: 'column', borderRadius: '16px', transition: 'all 0.2s ease-in-out', bgcolor: isFocused ? 'white' : 'transparent', boxShadow: isFocused ? '0 4px 12px rgba(0,0,0,0.1)' : 'none', border: '1px solid', borderColor: isFocused ? 'transparent' : '#e0e0e0' }}>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, px: 2, pt: 1, pb: projectFileTreeContext || fileContentContext.length > 0 ? 1 : 0 }}>
                         {projectFileTreeContext && (
-                            <Chip icon={<FunctionsIcon />} label="Контекст проекта" onDelete={() => setProjectFileTreeContext(null)} color="primary" variant="outlined" size="small" />
+                            // ИЗМЕНЕНИЕ: Текст чипа изменен для ясности
+                            <Chip icon={<FunctionsIcon />} label="Структура проекта" onDelete={() => setProjectFileTreeContext(null)} color="primary" variant="outlined" size="small" />
                         )}
                         {fileContentContext.map(file => (
                              <Chip key={file.fileName} icon={<ArticleOutlinedIcon />} label={file.fileName} onDelete={() => removeFileFromContext(file.fileName)} color="secondary" variant="outlined" size="small" />
