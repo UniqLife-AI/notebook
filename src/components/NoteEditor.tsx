@@ -7,11 +7,12 @@ import { Box, IconButton, Tooltip } from "@mui/material";
 import React, { useEffect, useState, useMemo } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeSlug from 'rehype-slug';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import { BacklinksDisplay } from "./BacklinksDisplay";
 
-// ИЗМЕНЕНИЕ: Выносим компонент ссылки для лучшей читаемости и функциональности
-const WikiLink = ({ noteName, displayText }: { noteName: string, displayText: string }) => {
+const WikiLink = ({ noteName, heading, displayText }: { noteName: string, heading?: string, displayText: string }) => {
     const { openOrCreateNoteByName, doesNoteExist } = useChatSessionStore(state => ({
         openOrCreateNoteByName: state.openOrCreateNoteByName,
         doesNoteExist: state.doesNoteExist,
@@ -21,7 +22,7 @@ const WikiLink = ({ noteName, displayText }: { noteName: string, displayText: st
 
     const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
         event.preventDefault();
-        openOrCreateNoteByName(noteName);
+        openOrCreateNoteByName(noteName, heading || null);
     };
 
     return (
@@ -52,9 +53,11 @@ const WikiLink = ({ noteName, displayText }: { noteName: string, displayText: st
 
 
 export const NoteEditor = () => {
-    const { activeSession, updateNoteContent } = useChatSessionStore(state => ({
+    const { activeSession, updateNoteContent, scrollToHeading, clearScrollToHeading } = useChatSessionStore(state => ({
         activeSession: state.getActiveSession(),
         updateNoteContent: state.updateNoteContent,
+        scrollToHeading: state.scrollToHeading,
+        clearScrollToHeading: state.clearScrollToHeading,
     }));
     
     const [content, setContent] = useState(activeSession?.rawContent || '');
@@ -64,12 +67,28 @@ export const NoteEditor = () => {
         const newContent = activeSession?.rawContent || '';
         setContent(newContent);
         
-        // ИЗМЕНЕНИЕ: Автоматически переключаемся в режим редактирования, если заметка новая и пустая
         if (activeSession && newContent.trim() === '' && activeSession.type === 'note') {
             setEditMode(true);
         }
 
     }, [activeSession]);
+
+    useEffect(() => {
+        if (scrollToHeading && !editMode) {
+            setTimeout(() => {
+                const element = document.getElementById(scrollToHeading);
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    element.style.transition = 'background-color 0.5s ease';
+                    element.style.backgroundColor = 'rgba(255, 229, 100, 0.5)';
+                    setTimeout(() => {
+                        element.style.backgroundColor = '';
+                    }, 2000);
+                }
+                clearScrollToHeading();
+            }, 100);
+        }
+    }, [scrollToHeading, editMode, clearScrollToHeading]);
 
     useEffect(() => {
         if (!activeSession || content === activeSession.rawContent) {
@@ -103,11 +122,12 @@ export const NoteEditor = () => {
 
             {editMode ? (
                 <Box sx={{ p: 2, height: '100%', overflowY: 'auto' }}>
+                    {/* ИСПРАВЛЕНИЕ: Возвращаем на место удаленный компонент */}
                     <TextareaAutosize
                         minRows={20}
                         value={content}
                         onChange={handleContentChange}
-                        placeholder="Начните писать... Используйте [[Имя Заметки]] или [[Имя Заметки|текст ссылки]] для создания ссылок."
+                        placeholder="Начните писать... Используйте [[Имя Заметки]] или [[Имя Заметки#Заголовок|текст ссылки]] для создания ссылок."
                         style={{
                             boxSizing: 'border-box',
                             width: '100%',
@@ -124,42 +144,46 @@ export const NoteEditor = () => {
                     />
                 </Box>
             ) : (
-                <Box sx={{ p: 4, height: '100%', overflowY: 'auto', '& p': {my: 1}, '& h1, & h2, & h3': {mt: 2, mb: 1, pb: 0.5, borderBottom: '1px solid #eee'} }}>
-                    <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]}
-                        // ИЗМЕНЕНИЕ: Улучшенный рендерер для обработки wiki-ссылок, включая псевдонимы
-                        components={{
-                            p: (props) => {
-                                const { children } = props;
-                                const newChildren = React.Children.toArray(children).flatMap((child: any, index: number) => {
-                                    if (typeof child !== 'string') {
-                                        return child;
-                                    }
-                                    
-                                    // Умный парсер, который может обработать [[note]] и [[note|alias]]
-                                    const wikiLinkRegex = /\[\[([^|\]\n]+)(?:\|([^\]\n]+))?\]\]/g;
-                                    const parts = child.split(wikiLinkRegex);
+                <Box sx={{ p: 4, height: '100%', overflowY: 'auto' }}>
+                    <Box sx={{ '& p': {my: 1}, '& h1, & h2, & h3, & h4, & h5, & h6': {mt: 2, mb: 1, pb: 0.5, borderBottom: '1px solid #eee', scrollMarginTop: '16px'} }}>
+                        <ReactMarkdown 
+                            rehypePlugins={[rehypeSlug]}
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                p: (props) => {
+                                    const { children } = props;
+                                    const newChildren = React.Children.toArray(children).flatMap((child: any, index: number) => {
+                                        if (typeof child !== 'string') {
+                                            return child;
+                                        }
+                                        
+                                        const wikiLinkRegex = /\[\[([^|#\]\n]+)(?:#([^|\]\n]+))?(?:\|([^\]\n]+))?\]\]/g;
+                                        const parts = child.split(wikiLinkRegex);
 
-                                    return parts.map((part, i) => {
-                                        // part будет чередоваться: текст, имя_заметки, псевдоним, текст, ...
-                                        if (i % 3 === 1) { // Это имя_заметки
-                                            const noteName = part;
-                                            const alias = parts[i + 1]; // Следующий элемент - псевдоним
-                                            const displayText = alias || noteName;
-                                            return <WikiLink key={`${noteName}-${index}-${i}`} noteName={noteName} displayText={displayText} />;
-                                        }
-                                        if (i % 3 === 2) { // Это псевдоним, он уже обработан
-                                            return null;
-                                        }
-                                        return part; // Это обычный текст
-                                    }).filter(Boolean);
-                                });
-                                return <p>{newChildren}</p>;
-                            }
-                        }}
-                    >
-                        {content}
-                    </ReactMarkdown>
+                                        return parts.map((part, i) => {
+                                            if (i % 4 === 1) {
+                                                const noteName = part;
+                                                const heading = parts[i + 2];
+                                                const alias = parts[i + 3];
+                                                const displayText = alias || (heading ? `${noteName}#${heading}` : noteName);
+                                                return <WikiLink key={`${noteName}-${index}-${i}`} noteName={noteName} heading={heading} displayText={displayText} />;
+                                            }
+                                            if (i % 4 === 2 || i % 4 === 3) {
+                                                return null;
+                                            }
+                                            return part;
+                                        }).filter(Boolean);
+                                    });
+                                    return <p>{newChildren}</p>;
+                                }
+                            }}
+                        >
+                            {content}
+                        </ReactMarkdown>
+                    </Box>
+                    {activeSession.type === 'note' && (
+                        <BacklinksDisplay noteName={activeSession.label} />
+                    )}
                 </Box>
             )}
         </Box>
