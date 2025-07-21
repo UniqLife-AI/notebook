@@ -10,10 +10,36 @@ export interface FileContentContext {
     content: string;
 }
 
-// ИЗМЕНЕНИЕ: Добавлена утилита для очистки имени файла от недопустимых символов
 const sanitizeFileName = (name: string): string => {
-    // Удаляем недопустимые символы и обрезаем пробелы
     return name.replace(/[<>:"/\\|?*]/g, '').trim();
+};
+
+const WIKI_LINK_REGEX = /\[\[([^|\]\n]+)(?:\|([^\]\n]+))?\]\]/g;
+
+const buildBacklinksIndex = (sessions: ChatSession[]): Map<string, Set<string>> => {
+    const index = new Map<string, Set<string>>();
+    
+    for (const session of sessions) {
+        if (session.type !== 'note') continue;
+
+        const links = [...session.rawContent.matchAll(WIKI_LINK_REGEX)];
+        
+        for (const match of links) {
+            const linkedNoteName = sanitizeFileName(match[1]);
+            if (!linkedNoteName) continue;
+
+            const currentNoteName = session.label;
+
+            // ИСПРАВЛЕНИЕ: Приводим ключ к нижнему регистру для регистронезависимости
+            const key = linkedNoteName.toLowerCase();
+
+            if (!index.has(key)) {
+                index.set(key, new Set());
+            }
+            index.get(key)!.add(currentNoteName);
+        }
+    }
+    return index;
 };
 
 
@@ -24,6 +50,7 @@ interface ChatSessionState {
     projectName: string | null;
     projectFileTreeContext: string | null;
     fileContentContext: FileContentContext[];
+    backlinksIndex: Map<string, Set<string>>;
 
     loadSessions: () => Promise<void>;
     setActiveSessionId: (id: string | null) => void;
@@ -34,8 +61,8 @@ interface ChatSessionState {
 
     createNewNote: (fileName: string) => Promise<void>;
     openOrCreateNoteByName: (noteName: string) => Promise<void>;
-    // ИЗМЕНЕНИЕ: Добавлен новый метод для проверки существования заметки
     doesNoteExist: (noteName: string) => boolean;
+    getBacklinksForNote: (noteName: string) => string[];
 
     openProject: () => Promise<void>;
     closeProject: () => Promise<void>;
@@ -52,6 +79,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     projectName: null,
     projectFileTreeContext: null,
     fileContentContext: [],
+    backlinksIndex: new Map(),
 
     loadSessions: async () => {
         try {
@@ -65,11 +93,14 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
                 }
             }
 
+            const newIndex = buildBacklinksIndex(loadedSessions);
+
             const currentActiveId = get().activeSessionId;
             const newActiveIdIsValid = loadedSessions.some(s => s.id === currentActiveId);
 
             set({
                 sessions: loadedSessions,
+                backlinksIndex: newIndex,
                 isProjectOpen: fileSystemService.isProjectOpen(),
                 projectName: fileSystemService.getCurrentDirectoryName(),
                 activeSessionId: newActiveIdIsValid
@@ -79,7 +110,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
         } catch (error) {
             console.error("Failed to load sessions:", error);
-            set({ sessions: [], activeSessionId: null, projectName: null, isProjectOpen: false });
+            set({ sessions: [], activeSessionId: null, projectName: null, isProjectOpen: false, backlinksIndex: new Map() });
         }
     },
 
@@ -88,6 +119,14 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     getActiveSession: () => {
         const { sessions, activeSessionId } = get();
         return sessions.find(s => s.id === activeSessionId);
+    },
+    
+    getBacklinksForNote: (noteName) => {
+        const index = get().backlinksIndex;
+        const sanitizedName = sanitizeFileName(noteName);
+        // ИСПРАВЛЕНИЕ: Ищем по ключу в нижнем регистре
+        const key = sanitizedName.toLowerCase();
+        return index.has(key) ? Array.from(index.get(key)!) : [];
     },
 
     updateSessionMessages: async (sessionId, messages) => {
@@ -99,10 +138,11 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
             messages,
             rawContent: parserService.stringifySession({ ...session, messages })
         };
+        
+        const newSessions = get().sessions.map(s => s.id === sessionId ? updatedSession : s);
+        const newIndex = buildBacklinksIndex(newSessions);
 
-        set(state => ({
-            sessions: state.sessions.map(s => s.id === sessionId ? updatedSession : s)
-        }));
+        set({ sessions: newSessions, backlinksIndex: newIndex });
         
         await fileSystemService.writeFile(sessionId, updatedSession.rawContent);
     },
@@ -116,25 +156,16 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         }
         
         const initialContent = '### User\n\n';
-        const initialMessage: Message = {
-            id: `msg-${Date.now()}`,
-            role: 'user',
-            content: ''
-        };
+        const newSession = parserService.parseFile(newFileName, initialContent);
 
-        const newSession: ChatSession = {
-            id: newFileName,
-            label: newFileName.replace('.md', ''),
-            type: 'chat',
-            rawContent: initialContent,
-            metadata: {},
-            messages: [initialMessage],
-        };
+        const newSessions = [...get().sessions, newSession];
+        const newIndex = buildBacklinksIndex(newSessions);
 
-        set(state => ({
-            sessions: [...state.sessions, newSession],
-            activeSessionId: newFileName
-        }));
+        set({
+            sessions: newSessions,
+            activeSessionId: newFileName,
+            backlinksIndex: newIndex
+        });
         
         await fileSystemService.writeFile(newFileName, initialContent);
     },
@@ -150,15 +181,18 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         const initialContent = '';
         const newSession = parserService.parseFile(newFileName, initialContent);
         
-        set(state => ({
-            sessions: [...state.sessions, newSession],
-            activeSessionId: newFileName
-        }));
+        const newSessions = [...get().sessions, newSession];
+        const newIndex = buildBacklinksIndex(newSessions);
+
+        set({
+            sessions: newSessions,
+            activeSessionId: newFileName,
+            backlinksIndex: newIndex
+        });
 
         await fileSystemService.writeFile(newFileName, initialContent);
     },
     
-    // ИЗМЕНЕНИЕ: Новая функция для проверки существования заметки
     doesNoteExist: (noteName) => {
         const sanitizedName = sanitizeFileName(noteName);
         return get().sessions.some(
@@ -168,7 +202,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
 
     openOrCreateNoteByName: async (noteName) => {
         const sanitizedName = sanitizeFileName(noteName);
-        if (!sanitizedName) return; // Не создаем заметки с пустым именем
+        if (!sanitizedName) return;
 
         if (get().doesNoteExist(sanitizedName)) {
             const existingSession = get().sessions.find(
@@ -186,10 +220,13 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     updateNoteContent: async (sessionId, newContent) => {
         const session = get().sessions.find(s => s.id === sessionId);
         if (!session || session.type !== 'note') return;
+        
         const updatedSession = { ...session, rawContent: newContent };
-        set(state => ({
-            sessions: state.sessions.map(s => s.id === sessionId ? updatedSession : s)
-        }));
+        const newSessions = get().sessions.map(s => s.id === sessionId ? updatedSession : s);
+        const newIndex = buildBacklinksIndex(newSessions);
+
+        set({ sessions: newSessions, backlinksIndex: newIndex });
+        
         await fileSystemService.writeFile(sessionId, newContent);
     },
 
