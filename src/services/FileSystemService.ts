@@ -8,11 +8,6 @@ class FileSystemService {
     private defaultDirectoryHandle: FileSystemDirectoryHandle | null = null;
     private projectDirectoryHandle: FileSystemDirectoryHandle | null = null;
 
-    private get activeHandle(): FileSystemDirectoryHandle | null {
-        return this.projectDirectoryHandle || this.defaultDirectoryHandle;
-    }
-
-    // ИЗМЕНЕНИЕ: Логика инициализации теперь только проверяет права, а не запрашивает их.
     async initialize(): Promise<boolean> {
         const handle = await get<FileSystemDirectoryHandle>(DEFAULT_HANDLE_KEY);
         if (!handle) {
@@ -20,7 +15,6 @@ class FileSystemService {
             return false;
         }
 
-        // Проверяем текущий статус разрешений без запроса
         const permissionStatus = await handle.queryPermission({ mode: 'readwrite' });
         if (permissionStatus === 'granted') {
             console.log('Permission already granted for default handle.');
@@ -28,30 +22,23 @@ class FileSystemService {
             return true;
         }
 
-        // Если права не предоставлены (prompt или denied), мы не можем их запросить при загрузке.
-        // Пользователь должен будет инициировать действие сам.
         console.log(`Initial permission status is '${permissionStatus}'. A user action is required to request permission.`);
-        // Мы можем сохранить хэндл, но приложение не будет полностью функционально до получения прав.
         this.defaultDirectoryHandle = handle;
-        // Возвращаем false, т.к. приложение не готово к полноценной работе.
-        // Это заставит пользователя увидеть диалог SetupDirectoryDialog, если он снова откроет приложение.
-        // Или мы можем вернуть true и обрабатывать отсутствие прав в UI.
-        // Для нашей логики, если прав нет, лучше показать начальный диалог.
         return false;
     }
 
-    // Этот метод вызывается по клику, поэтому он может запрашивать права.
     async promptAndSetDirectory(): Promise<FileSystemDirectoryHandle | null> {
         try {
             const handle = await window.showDirectoryPicker();
             if (await this.requestPermission(handle)) {
                 this.defaultDirectoryHandle = handle;
                 await set(DEFAULT_HANDLE_KEY, handle);
+                // При смене основной директории, закрываем текущий проект
+                this.closeProjectDirectory();
                 return handle;
             }
             return null;
         } catch (error) {
-            // Ошибки, когда пользователь закрывает окно выбора, можно игнорировать
             if (error instanceof DOMException && error.name === 'AbortError') {
                 return null;
             }
@@ -60,7 +47,6 @@ class FileSystemService {
         }
     }
 
-    // Этот метод тоже вызывается по клику.
     async openProjectDirectory(): Promise<FileSystemDirectoryHandle | null> {
         try {
             const handle = await window.showDirectoryPicker();
@@ -78,14 +64,12 @@ class FileSystemService {
         }
     }
 
-    // Внутренний метод для запроса прав, вызывается только после действия пользователя.
     private async requestPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
         const options = { mode: 'readwrite' as const };
         const status = await handle.queryPermission(options);
         if (status === 'granted') {
             return true;
         }
-        // Этот вызов требует активации пользователем.
         if ((await handle.requestPermission(options)) === 'granted') {
             return true;
         }
@@ -97,6 +81,7 @@ class FileSystemService {
     }
 
     getCurrentDirectoryName(): string | null {
+        // Приоритет у имени проекта
         if (this.projectDirectoryHandle) {
             return this.projectDirectoryHandle.name;
         }
@@ -110,7 +95,19 @@ class FileSystemService {
         return this.projectDirectoryHandle !== null;
     }
     
-    // ... остальные методы без изменений ...
+    // Новый приватный метод для получения текущей рабочей директории (либо глобальной, либо папки .ai-notebook/chats в проекте)
+    private async getActiveDirectoryHandle(create = false): Promise<FileSystemDirectoryHandle> {
+        if (this.projectDirectoryHandle) {
+            // В режиме проекта работаем с .ai-notebook/chats
+            const aiNotebookHandle = await this.projectDirectoryHandle.getDirectoryHandle('.ai-notebook', { create });
+            return await aiNotebookHandle.getDirectoryHandle('chats', { create });
+        }
+        if (this.defaultDirectoryHandle) {
+            // В глобальном режиме работаем с корневой папкой
+            return this.defaultDirectoryHandle;
+        }
+        throw new Error('No active directory selected');
+    }
 
     private async buildTree(dirHandle: FileSystemDirectoryHandle, prefix: string, ignore: Set<string>): Promise<string> {
         let tree = '';
@@ -137,57 +134,55 @@ class FileSystemService {
     }
 
     async getProjectFileTree(): Promise<string | null> {
-        if (!this.activeHandle) {
+        // Дерево строится всегда от корня проекта, а не от папки чатов
+        const handle = this.projectDirectoryHandle || this.defaultDirectoryHandle;
+        if (!handle) {
             console.warn('No active directory to build file tree from.');
             return null;
         }
         const ignore = new Set(['.git', 'node_modules', '.DS_Store', '.vscode', 'dist', 'build', '.next', 'out', '.ai-notebook']);
         try {
-            const tree = await this.buildTree(this.activeHandle, '', ignore);
-            return `\`\`\`\n${this.activeHandle.name}/\n${tree}\`\`\``;
+            const tree = await this.buildTree(handle, '', ignore);
+            return `\`\`\`\n${handle.name}/\n${tree}\`\`\``;
         } catch (error) {
             console.error('Failed to build file tree:', error);
             return null;
         }
     }
 
-    private async getChatDirectoryHandle(create = false): Promise<FileSystemDirectoryHandle> {
-        if (!this.activeHandle) throw new Error('No active directory selected');
-
-        if (this.projectDirectoryHandle) {
-            const aiNotebookHandle = await this.projectDirectoryHandle.getDirectoryHandle('.ai-notebook', { create });
-            return await aiNotebookHandle.getDirectoryHandle('chats', { create });
-        }
-        return this.activeHandle;
-    }
-
     async listFiles(): Promise<(FileSystemFileHandle | FileSystemDirectoryHandle)[]> {
-        if (!this.activeHandle || (await this.activeHandle.queryPermission({mode: 'readwrite'})) !== 'granted') {
+        // Проверяем права на корневую папку, а не на папку чатов
+        const rootHandle = this.projectDirectoryHandle || this.defaultDirectoryHandle;
+        if (!rootHandle || (await rootHandle.queryPermission({mode: 'readwrite'})) !== 'granted') {
             return [];
         }
         try {
-            const chatDir = await this.getChatDirectoryHandle(false);
+            // Получаем папку чатов (она будет создана, если не существует)
+            const chatDir = await this.getActiveDirectoryHandle(true);
             const files: (FileSystemFileHandle | FileSystemDirectoryHandle)[] = [];
             for await (const entry of chatDir.values()) {
                 files.push(entry);
             }
             return files;
         } catch (e) {
+            // Если папки .ai-notebook/chats еще нет, возвращаем пустой массив
+            if (e instanceof DOMException && e.name === 'NotFoundError') {
+                return [];
+            }
+            console.error("Error listing files:", e);
             return [];
         }
     }
 
     async readFile(fileName: string): Promise<string> {
-        if (!this.activeHandle) throw new Error("No active directory to read from.");
-        const chatDir = await this.getChatDirectoryHandle(false);
+        const chatDir = await this.getActiveDirectoryHandle(false);
         const fileHandle = await chatDir.getFileHandle(fileName, { create: false });
         const file = await fileHandle.getFile();
         return await file.text();
     }
 
     async writeFile(fileName: string, content: string): Promise<void> {
-        if (!this.activeHandle) throw new Error("No active directory to write to.");
-        const chatDir = await this.getChatDirectoryHandle(true);
+        const chatDir = await this.getActiveDirectoryHandle(true);
         const fileHandle = await chatDir.getFileHandle(fileName, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(content);
@@ -195,14 +190,12 @@ class FileSystemService {
     }
 
     async createDirectory(dirName: string): Promise<void> {
-        if (!this.activeHandle) throw new Error("No active directory to create a directory in.");
-        const chatDir = await this.getChatDirectoryHandle(true);
+        const chatDir = await this.getActiveDirectoryHandle(true);
         await chatDir.getDirectoryHandle(dirName, { create: true });
     }
 
     async removeEntry(name: string, recursive: boolean): Promise<void> {
-        if (!this.activeHandle) throw new Error("No active directory to remove from.");
-        const chatDir = await this.getChatDirectoryHandle(false);
+        const chatDir = await this.getActiveDirectoryHandle(false);
         await chatDir.removeEntry(name, { recursive });
     }
 }
