@@ -2,14 +2,23 @@
 
 "use client";
 
-import { useChatSessionStore } from "@/store/useChatSessionStore";
-import { Box, Typography, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divider } from "@mui/material";
+import { useChatSessionStore, Backlink } from "@/store/useChatSessionStore";
+import { Box, Typography, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Chip, ChipProps } from "@mui/material";
 import LinkIcon from '@mui/icons-material/Link';
 import React from "react";
 
 interface BacklinksDisplayProps {
     noteName: string;
 }
+
+// ИЗМЕНЕНИЕ: Функция для определения цвета чипа (аналогично NoteEditor)
+const getChipColor = (type?: string | null): ChipProps['color'] => {
+    if (!type) return 'default';
+    const lowerType = type.toLowerCase();
+    if (lowerType === 'supports') return 'success';
+    if (lowerType === 'refutes') return 'error';
+    return 'default';
+};
 
 export const BacklinksDisplay = ({ noteName }: BacklinksDisplayProps) => {
     const { getBacklinksForNote, openOrCreateNoteByName } = useChatSessionStore(state => ({
@@ -24,7 +33,6 @@ export const BacklinksDisplay = ({ noteName }: BacklinksDisplayProps) => {
     }
 
     const handleLinkClick = (backlinkName: string) => {
-        // ИСПРАВЛЕНИЕ: Передаем null в качестве второго аргумента для заголовка
         openOrCreateNoteByName(backlinkName, null);
     };
 
@@ -34,13 +42,27 @@ export const BacklinksDisplay = ({ noteName }: BacklinksDisplayProps) => {
                 Упоминания ({backlinks.length})
             </Typography>
             <List dense>
-                {backlinks.map(backlink => (
-                    <ListItem key={backlink} disablePadding>
-                        <ListItemButton onClick={() => handleLinkClick(backlink)}>
+                {backlinks.map((backlink: Backlink, index: number) => (
+                    <ListItem 
+                        key={`${backlink.sourceNote}-${index}`} 
+                        disablePadding
+                        secondaryAction={
+                            backlink.type && 
+                            <Chip 
+                                label={backlink.type} 
+                                size="small" 
+                                variant="outlined" 
+                                // ИЗМЕНЕНИЕ: Применяем цветовое кодирование
+                                color={getChipColor(backlink.type)}
+                                sx={{ mr: 1 }} 
+                            />
+                        }
+                    >
+                        <ListItemButton onClick={() => handleLinkClick(backlink.sourceNote)}>
                             <ListItemIcon sx={{ minWidth: 32 }}>
                                 <LinkIcon fontSize="small" />
                             </ListItemIcon>
-                            <ListItemText primary={backlink} />
+                            <ListItemText primary={backlink.sourceNote} />
                         </ListItemButton>
                     </ListItem>
                 ))}

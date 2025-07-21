@@ -10,15 +10,22 @@ export interface FileContentContext {
     content: string;
 }
 
+// ИЗМЕНЕНИЕ: Тип для хранения информации об обратной ссылке
+export interface Backlink {
+    sourceNote: string;
+    type: string | null;
+}
+
 const sanitizeFileName = (name: string): string => {
     return name.replace(/[<>:"/\\|?*]/g, '').trim();
 };
 
-// ИЗМЕНЕНИЕ: Регулярное выражение теперь захватывает и опциональный заголовок
-const WIKI_LINK_REGEX = /\[\[([^|#\]\n]+)(?:#([^|\]\n]+))?(?:\|([^\]\n]+))?\]\]/g;
+// ИЗМЕНЕНИЕ: Регулярное выражение теперь захватывает и семантический тип
+const WIKI_LINK_REGEX = /\[\[(?:([a-zA-Z\s]+)::)?([^|#\]\n]+)(?:#([^|\]\n]+))?(?:\|([^\]\n]+))?\]\]/g;
 
-const buildBacklinksIndex = (sessions: ChatSession[]): Map<string, Set<string>> => {
-    const index = new Map<string, Set<string>>();
+// ИЗМЕНЕНИЕ: Функция теперь строит индекс с семантическими типами
+const buildBacklinksIndex = (sessions: ChatSession[]): Map<string, Set<Backlink>> => {
+    const index = new Map<string, Set<Backlink>>();
     
     for (const session of sessions) {
         if (session.type !== 'note') continue;
@@ -26,8 +33,8 @@ const buildBacklinksIndex = (sessions: ChatSession[]): Map<string, Set<string>> 
         const links = [...session.rawContent.matchAll(WIKI_LINK_REGEX)];
         
         for (const match of links) {
-            // Группа 1 - это всегда имя заметки, заголовок (группа 2) не влияет на индекс
-            const linkedNoteName = sanitizeFileName(match[1]); 
+            const semanticType = match[1]?.trim() || null;
+            const linkedNoteName = sanitizeFileName(match[2]);
             if (!linkedNoteName) continue;
 
             const currentNoteName = session.label;
@@ -36,7 +43,7 @@ const buildBacklinksIndex = (sessions: ChatSession[]): Map<string, Set<string>> 
             if (!index.has(key)) {
                 index.set(key, new Set());
             }
-            index.get(key)!.add(currentNoteName);
+            index.get(key)!.add({ sourceNote: currentNoteName, type: semanticType });
         }
     }
     return index;
@@ -50,8 +57,8 @@ interface ChatSessionState {
     projectName: string | null;
     projectFileTreeContext: string | null;
     fileContentContext: FileContentContext[];
-    backlinksIndex: Map<string, Set<string>>;
-    // ИЗМЕНЕНИЕ: Состояние для управления прокруткой к заголовку
+    // ИЗМЕНЕНИЕ: Тип индекса обновлен
+    backlinksIndex: Map<string, Set<Backlink>>;
     scrollToHeading: string | null;
 
     loadSessions: () => Promise<void>;
@@ -62,11 +69,10 @@ interface ChatSessionState {
     updateNoteContent: (sessionId: string, newContent: string) => Promise<void>;
 
     createNewNote: (fileName: string) => Promise<void>;
-    // ИЗМЕНЕНИЕ: Метод теперь принимает опциональный заголовок
     openOrCreateNoteByName: (noteName: string, heading: string | null) => Promise<void>;
     doesNoteExist: (noteName: string) => boolean;
-    getBacklinksForNote: (noteName: string) => string[];
-    // ИЗМЕНЕНИЕ: Метод для сброса состояния прокрутки
+    // ИЗМЕНЕНИЕ: Геттер теперь возвращает массив объектов Backlink
+    getBacklinksForNote: (noteName: string) => Backlink[];
     clearScrollToHeading: () => void;
 
     openProject: () => Promise<void>;
@@ -85,7 +91,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
     projectFileTreeContext: null,
     fileContentContext: [],
     backlinksIndex: new Map(),
-    scrollToHeading: null, // Инициализация
+    scrollToHeading: null,
 
     loadSessions: async () => {
         try {
@@ -119,7 +125,7 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         }
     },
 
-    setActiveSessionId: (id) => set({ activeSessionId: id, scrollToHeading: null }), // Сбрасываем скролл при ручной смене заметки
+    setActiveSessionId: (id) => set({ activeSessionId: id, scrollToHeading: null }),
 
     getActiveSession: () => {
         const { sessions, activeSessionId } = get();
@@ -133,12 +139,71 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
         return index.has(key) ? Array.from(index.get(key)!) : [];
     },
 
-    // ИЗМЕНЕНИЕ: Метод для сброса состояния прокрутки
     clearScrollToHeading: () => set({ scrollToHeading: null }),
 
-    updateSessionMessages: async (sessionId, messages) => { /* ... без изменений */ },
-    createNewSession: async (fileName) => { /* ... без изменений */ },
-    createNewNote: async (fileName) => { /* ... без изменений */ },
+    updateSessionMessages: async (sessionId, messages) => {
+        const session = get().sessions.find(s => s.id === sessionId);
+        if (!session) return;
+        
+        const updatedSession: ChatSession = {
+            ...session,
+            messages,
+            rawContent: parserService.stringifySession({ ...session, messages })
+        };
+        
+        const newSessions = get().sessions.map(s => s.id === sessionId ? updatedSession : s);
+        const newIndex = buildBacklinksIndex(newSessions);
+
+        set({ sessions: newSessions, backlinksIndex: newIndex });
+        
+        await fileSystemService.writeFile(sessionId, updatedSession.rawContent);
+    },
+
+    createNewSession: async (fileName) => {
+        const sanitizedName = sanitizeFileName(fileName);
+        const newFileName = sanitizedName.endsWith('.md') ? sanitizedName : `${sanitizedName}.md`;
+        if (get().sessions.some(s => s.id === newFileName)) {
+            set({ activeSessionId: newFileName });
+            return;
+        }
+        
+        const initialContent = '### User\n\n';
+        const newSession = parserService.parseFile(newFileName, initialContent);
+
+        const newSessions = [...get().sessions, newSession];
+        const newIndex = buildBacklinksIndex(newSessions);
+
+        set({
+            sessions: newSessions,
+            activeSessionId: newFileName,
+            backlinksIndex: newIndex
+        });
+        
+        await fileSystemService.writeFile(newFileName, initialContent);
+    },
+
+    createNewNote: async (fileName) => {
+        const sanitizedName = sanitizeFileName(fileName);
+        const newFileName = sanitizedName.endsWith('.md') ? sanitizedName : `${sanitizedName}.md`;
+        if (get().sessions.some(s => s.id === newFileName)) {
+            set({ activeSessionId: newFileName });
+            return;
+        }
+
+        const initialContent = '';
+        const newSession = parserService.parseFile(newFileName, initialContent);
+        
+        const newSessions = [...get().sessions, newSession];
+        const newIndex = buildBacklinksIndex(newSessions);
+
+        set({
+            sessions: newSessions,
+            activeSessionId: newFileName,
+            backlinksIndex: newIndex
+        });
+
+        await fileSystemService.writeFile(newFileName, initialContent);
+    },
     
     doesNoteExist: (noteName) => {
         const sanitizedName = sanitizeFileName(noteName);
@@ -160,13 +225,11 @@ export const useChatSessionStore = create<ChatSessionState>((set, get) => ({
                 s => s.label.toLowerCase() === sanitizedName.toLowerCase()
             );
             if (existingSession) {
-                // Устанавливаем и активную сессию, и цель для прокрутки
                 set({ activeSessionId: existingSession.id, scrollToHeading: slug });
             }
         } else {
             const newFileName = `${sanitizedName}.md`;
             await get().createNewNote(newFileName);
-            // Если создаем новую заметку, скроллить некуда
             set({ scrollToHeading: null });
         }
     },

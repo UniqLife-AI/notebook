@@ -2,7 +2,7 @@
 
 "use client";
 import { useChatSessionStore } from "@/store/useChatSessionStore";
-import { TextareaAutosize, Link } from "@mui/material"; 
+import { TextareaAutosize, Link, Chip, ChipProps } from "@mui/material"; 
 import { Box, IconButton, Tooltip } from "@mui/material";
 import React, { useEffect, useState, useMemo } from "react";
 import ReactMarkdown from 'react-markdown';
@@ -12,7 +12,16 @@ import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { BacklinksDisplay } from "./BacklinksDisplay";
 
-const WikiLink = ({ noteName, heading, displayText }: { noteName: string, heading?: string, displayText: string }) => {
+// ИЗМЕНЕНИЕ: Функция для определения цвета чипа
+const getChipColor = (type?: string): ChipProps['color'] => {
+    if (!type) return 'default';
+    const lowerType = type.toLowerCase();
+    if (lowerType === 'supports') return 'success';
+    if (lowerType === 'refutes') return 'error';
+    return 'default';
+};
+
+const WikiLink = ({ semanticType, noteName, heading, displayText }: { semanticType?: string, noteName: string, heading?: string, displayText: string }) => {
     const { openOrCreateNoteByName, doesNoteExist } = useChatSessionStore(state => ({
         openOrCreateNoteByName: state.openOrCreateNoteByName,
         doesNoteExist: state.doesNoteExist,
@@ -43,9 +52,27 @@ const WikiLink = ({ noteName, heading, displayText }: { noteName: string, headin
                     textDecoration: 'none',
                     borderBottom: '1px solid',
                     borderColor: noteExists ? 'primary.main' : 'text.primary',
-                }
+                },
+                verticalAlign: 'middle',
             }}
         >
+            {semanticType && 
+                <Chip 
+                    component="span" 
+                    label={semanticType} 
+                    size="small" 
+                    variant="outlined" 
+                    // ИЗМЕНЕНИЕ: Применяем цветовое кодирование
+                    color={getChipColor(semanticType)}
+                    sx={{ 
+                        mr: 0.5, 
+                        height: 'auto', 
+                        '& .MuiChip-label': { py: '1px' },
+                        position: 'relative',
+                        top: '-1px'
+                    }} 
+                />
+            }
             {displayText}
         </Link>
     );
@@ -122,12 +149,11 @@ export const NoteEditor = () => {
 
             {editMode ? (
                 <Box sx={{ p: 2, height: '100%', overflowY: 'auto' }}>
-                    {/* ИСПРАВЛЕНИЕ: Возвращаем на место удаленный компонент */}
                     <TextareaAutosize
                         minRows={20}
                         value={content}
                         onChange={handleContentChange}
-                        placeholder="Начните писать... Используйте [[Имя Заметки]] или [[Имя Заметки#Заголовок|текст ссылки]] для создания ссылок."
+                        placeholder="Начните писать... Используйте [[тип::Имя Заметки#Заголовок|текст ссылки]] для создания ссылок."
                         style={{
                             boxSizing: 'border-box',
                             width: '100%',
@@ -157,21 +183,26 @@ export const NoteEditor = () => {
                                             return child;
                                         }
                                         
-                                        const wikiLinkRegex = /\[\[([^|#\]\n]+)(?:#([^|\]\n]+))?(?:\|([^\]\n]+))?\]\]/g;
+                                        const wikiLinkRegex = /\[\[(?:([a-zA-Z\s]+)::)?([^|#\]\n]+)(?:#([^|\]\n]+))?(?:\|([^\]\n]+))?\]\]/g;
                                         const parts = child.split(wikiLinkRegex);
 
                                         return parts.map((part, i) => {
-                                            if (i % 4 === 1) {
-                                                const noteName = part;
-                                                const heading = parts[i + 2];
-                                                const alias = parts[i + 3];
-                                                const displayText = alias || (heading ? `${noteName}#${heading}` : noteName);
-                                                return <WikiLink key={`${noteName}-${index}-${i}`} noteName={noteName} heading={heading} displayText={displayText} />;
-                                            }
-                                            if (i % 4 === 2 || i % 4 === 3) {
+                                            if (i % 5 === 1) { 
                                                 return null;
                                             }
-                                            return part;
+                                            if (i % 5 === 2) {
+                                                const semanticType = parts[i-1];
+                                                const noteName = part;
+                                                const heading = parts[i + 1];
+                                                const alias = parts[i + 2];
+                                                const defaultText = heading ? `${noteName}#${heading}` : noteName;
+                                                const displayText = alias || defaultText;
+                                                return <WikiLink key={`${noteName}-${index}-${i}`} semanticType={semanticType} noteName={noteName} heading={heading} displayText={displayText} />;
+                                            }
+                                            if (i % 5 === 0) {
+                                                 return part;
+                                            }
+                                            return null;
                                         }).filter(Boolean);
                                     });
                                     return <p>{newChildren}</p>;
