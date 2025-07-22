@@ -1,17 +1,22 @@
-// File Name: src/store/useSettingsStore.ts
-
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface SettingsState {
-  isInitialized: boolean;
-  needsSetup: boolean;
-  setInitialized: (status: boolean) => void;
-  setNeedsSetup: (status: boolean) => void;
+  rootDirectory: string | null;
+  setRootDirectory: (path: string) => void;
+  clearRootDirectory: () => void;
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
-  isInitialized: false, // Изначально приложение не инициализировано
-  needsSetup: false,    // Изначально мы не знаем, нужна ли настройка
-  setInitialized: (status) => set({ isInitialized: status }),
-  setNeedsSetup: (status) => set({ needsSetup: status }),
-}));
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set) => ({
+      rootDirectory: null,
+      setRootDirectory: (path: string) => set({ rootDirectory: path }),
+      clearRootDirectory: () => set({ rootDirectory: null }),
+    }),
+    {
+      name: 'app-settings-storage', // name of the item in the storage (must be unique)
+      storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
+    }
+  )
+);

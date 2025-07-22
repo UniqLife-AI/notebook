@@ -1,14 +1,12 @@
-// File Name: src/components/CommandPalette.tsx
+// File: frontend/src/components/CommandPalette.tsx
 
-"use client";
-
-import { useEffect } from 'react';
+import React from 'react';
 import { Command } from 'cmdk';
-import { Dialog, DialogContent, Box, Typography, Paper } from '@mui/material';
-import { useCommandPaletteStore } from '@/store/useCommandPaletteStore';
-import { useChatSessionStore } from '@/store/useChatSessionStore';
+import { Dialog, DialogContent } from '@mui/material';
+import { useCommandPaletteStore } from '../store/useCommandPaletteStore';
 
-// Стили для кастомизации CMDK под Material-UI
+// ИСПРАВЛЕНО: Импорт `useChatSessionStore` полностью удален.
+
 const commandPaletteStyles = `
     [cmdk-input] {
         font-family: 'Roboto', sans-serif;
@@ -62,7 +60,7 @@ interface CommandPaletteProps {
 
 export const CommandPalette = ({ onOpenSettings, onNewChat }: CommandPaletteProps) => {
     const { isOpen, close } = useCommandPaletteStore();
-    const { openProject } = useChatSessionStore();
+    // ИСПРАВЛЕНО: Строка, использующая `useChatSessionStore`, удалена.
 
     const runCommand = (command: () => void) => {
         close();
@@ -96,12 +94,8 @@ export const CommandPalette = ({ onOpenSettings, onNewChat }: CommandPaletteProp
                             </Command.Item>
                         </Command.Group>
 
-                        <Command.Group heading="Проект">
-                            <Command.Item onSelect={() => runCommand(openProject)}>
-                                Открыть проект...
-                            </Command.Item>
-                        </Command.Group>
-
+                        {/* ИСПРАВЛЕНО: Группа "Проект" и команда "Открыть проект..." удалены,
+                            так как они зависели от старой архитектуры. */}
                     </Command.List>
                 </Command>
             </DialogContent>

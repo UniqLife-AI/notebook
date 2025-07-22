@@ -1,19 +1,22 @@
-"use client";
 import React, { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Box } from '@mui/material';
 import '@xterm/xterm/css/xterm.css';
 
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { WriteToShell } from '../../wailsjs/go/main/App';
+// ИСПРАВЛЕНО: Импортируем нашу реальную Go-функцию. WriteToShell и EventsOn удалены.
+import { TerminalCommand } from '../../wailsjs/go/main/App';
 
+/**
+ * @component TerminalComponent
+ * @description Адаптирован под текущую реализацию бэкенда.
+ * Вместо интерактивного stdin/stdout, он теперь отправляет команду целиком
+ * по нажатию Enter и выводит результат. Это временное решение для компиляции.
+ */
 const TerminalComponent = () => {
     const boxRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const isInitialized = useRef(false);
-    // This will now track the user's current input line.
-    const currentInput = useRef('');
 
     useEffect(() => {
         if (!boxRef.current || isInitialized.current) {
@@ -33,47 +36,45 @@ const TerminalComponent = () => {
         term.loadAddon(fitAddon);
         term.open(boxRef.current);
         fitAddon.fit();
+        term.write('Welcome to the integrated terminal.\r\n> ');
         term.focus();
 
-        const unsubscribe = EventsOn("shell-output", (data: string) => {
-            if (termRef.current) {
-                termRef.current.write(data);
-            }
-        });
+        let currentInput = '';
 
-        const onDataDisposable = term.onData(data => {
+        const onDataDisposable = term.onData(async (data) => {
             if (!termRef.current) return;
 
             const code = data.charCodeAt(0);
 
-            // Handle Enter key
-            if (code === 13) { // Carriage return
-                if (currentInput.current.length > 0) {
-                    WriteToShell(currentInput.current + '\r\n');
-                } else {
-                    // Send an empty line if user just presses enter
-                    WriteToShell('\r\n');
+            if (code === 13) { // Enter
+                term.write('\r\n');
+                if (currentInput.trim().length > 0) {
+                    try {
+                        // Вызываем нашу Go-функцию и ждем результат.
+                        const result = await TerminalCommand(currentInput);
+                        // Заменяем \n на \r\n для корректного отображения в xterm.
+                        const formattedResult = result.replace(/\n/g, '\r\n');
+                        term.write(formattedResult);
+                    } catch (error) {
+                        term.write(`\r\nError: ${error}\r\n`);
+                    }
                 }
-                currentInput.current = '';
-                term.write('\r\n'); // Visually move to the next line immediately
+                currentInput = '';
+                term.write('> '); // Приглашение к вводу
                 return;
             }
 
-            // Handle Backspace key
             if (code === 127) { // Backspace
-                if (currentInput.current.length > 0) {
-                    // Remove the last character from our input buffer
-                    currentInput.current = currentInput.current.slice(0, -1);
-                    // Visually delete the character
+                if (currentInput.length > 0) {
+                    currentInput = currentInput.slice(0, -1);
                     term.write('\b \b');
                 }
                 return;
             }
             
-            // Handle printable characters
-            if (code >= 32 && code <= 254) {
-                currentInput.current += data;
-                term.write(data); // Echo character locally
+            if (code >= 32 && code < 255) {
+                currentInput += data;
+                term.write(data);
             }
         });
 
@@ -83,12 +84,9 @@ const TerminalComponent = () => {
         resizeObserver.observe(boxRef.current);
 
         return () => {
-            unsubscribe();
             onDataDisposable.dispose();
             resizeObserver.disconnect();
-            if (termRef.current) {
-                termRef.current.dispose();
-            }
+            if (termRef.current) termRef.current.dispose();
             isInitialized.current = false;
         };
     }, []);

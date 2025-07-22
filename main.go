@@ -1,132 +1,127 @@
 package main
 
 import (
-    "context"
-    "embed"
-    "io"
-    "log"
-    "os/exec"
-    "sync"
+	"context"
+	"embed"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath" // <-- ДОБАВЛЕН ИМПОРТ
 
-    "github.com/wailsapp/wails/v2"
-    "github.com/wailsapp/wails/v2/pkg/options"
-    "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// App struct
 type App struct {
-    ctx        context.Context
-    shellStdin io.WriteCloser
-    wg         sync.WaitGroup
+	ctx context.Context
 }
 
+// NewApp creates a new App application struct
 func NewApp() *App {
-    return &App{}
+	return &App{}
 }
 
-func (a *App) startup(ctx context.Context) {
-    a.ctx = ctx
-    log.Println("INFO: App startup. Starting shell...")
-    go a.startShell()
+// OnStartup is called when the app starts. The context is saved
+// so we can call the runtime methods
+func (a *App) OnStartup(ctx context.Context) {
+	a.ctx = ctx
 }
 
-func (a *App) startShell() {
-    log.Println("INFO: Goroutine started. Attempting to launch 'powershell.exe' using standard os/exec...")
-    cmd := exec.Command("powershell.exe", "-NoLogo", "-NoExit")
-
-    stdin, err := cmd.StdinPipe()
-    if err != nil {
-        log.Printf("FATAL: Failed to get stdin pipe: %v", err)
-        return
-    }
-    a.shellStdin = stdin
-
-    stdout, err := cmd.StdoutPipe()
-    if err != nil {
-        log.Printf("FATAL: Failed to get stdout pipe: %v", err)
-        return
-    }
-
-    stderr, err := cmd.StderrPipe()
-    if err != nil {
-        log.Printf("FATAL: Failed to get stderr pipe: %v", err)
-        return
-    }
-
-    if err := cmd.Start(); err != nil {
-        log.Printf("FATAL: Failed to start command: %v", err)
-        return
-    }
-    log.Println("SUCCESS: PowerShell process started successfully.")
-
-    // Set output encoding to UTF-8 and UI language to Russian
-    go func() {
-        log.Println("INFO: Setting PowerShell encoding to UTF-8 and UI culture to ru-RU.")
-        setupCommand := "$OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Threading.Thread]::CurrentThread.CurrentUICulture = 'ru-RU'\r\n"
-        _, err := stdin.Write([]byte(setupCommand))
-        if err != nil {
-            log.Printf("ERROR: Failed to set PowerShell encoding and culture: %v", err)
-        }
-    }()
-
-    a.wg.Add(2)
-    go a.pipeOutput(stdout, "stdout")
-    go a.pipeOutput(stderr, "stderr")
-
-    log.Println("INFO: Waiting for process to exit...")
-    cmd.Wait()
-    a.wg.Wait()
-    log.Println("INFO: Shell process has fully exited.")
+// SelectDirectory opens a native directory selection dialog.
+func (a *App) SelectDirectory() string {
+	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Project Directory",
+	})
+	if err != nil {
+		log.Printf("Error selecting directory: %s", err)
+		return ""
+	}
+	return path
 }
 
-func (a *App) pipeOutput(pipe io.ReadCloser, pipeName string) {
-    defer a.wg.Done()
-    buffer := make([]byte, 4096)
-    for {
-        n, err := pipe.Read(buffer)
-        if err != nil {
-            if err != io.EOF {
-                log.Printf("ERROR: Failed to read from %s: %v", pipeName, err)
-            }
-            break
-        }
-        if n > 0 {
-            data := string(buffer[:n])
-            log.Printf("DATA: Read %d bytes from %s. Emitting 'shell-output'.", n, pipeName)
-            runtime.EventsEmit(a.ctx, "shell-output", data)
-        }
-    }
-    log.Printf("INFO: Finished reading from %s pipe.", pipeName)
+// ReadFile читает содержимое файла по указанному пути.
+func (a *App) ReadFile(filePath string) (string, error) {
+	bytes, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Printf("Error reading file %s: %s", filePath, err)
+		return "", err
+	}
+	return string(bytes), nil
 }
 
-func (a *App) WriteToShell(data string) {
-    if a.shellStdin != nil {
-        log.Printf("WRITE: Writing %d bytes to stdin.", len(data))
-        _, err := a.shellStdin.Write([]byte(data))
-        if err != nil {
-            log.Printf("ERROR: Failed to write to stdin: %v", err)
-        }
-    } else {
-        log.Println("WARN: WriteToShell called but stdin is not available.")
-    }
+// WriteFile записывает содержимое в файл по указанному пути.
+func (a *App) WriteFile(filePath string, content string) error {
+	err := os.WriteFile(filePath, []byte(content), 0644)
+	if err != nil {
+		log.Printf("Error writing file %s: %s", filePath, err)
+	}
+	return err
+}
+
+// FileInfo структура для передачи информации о файле на фронтенд.
+// @comment: Мы используем структуру, чтобы фронтенд знал, что рендерить (файл или папку).
+type FileInfo struct {
+	Name        string `json:"name"`
+	IsDirectory bool   `json:"isDirectory"`
+	Path        string `json:"path"`
+}
+
+// ListFiles сканирует указанную директорию и возвращает список файлов и папок.
+// @comment: Эта функция заменит старую логику из FileSystemService.
+func (a *App) ListFiles(dirPath string) ([]FileInfo, error) {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		log.Printf("Error reading directory %s: %s", dirPath, err)
+		return nil, err
+	}
+
+	var files []FileInfo
+	for _, entry := range entries {
+		files = append(files, FileInfo{
+			Name:        entry.Name(),
+			IsDirectory: entry.IsDir(),
+			Path:        filepath.Join(dirPath, entry.Name()),
+		})
+	}
+	return files, nil
+}
+
+// TerminalCommand executes a command in the integrated terminal.
+func (a *App) TerminalCommand(command string) (string, error) {
+	cmd := exec.Command("powershell", "-Command", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
 }
 
 func main() {
-    app := NewApp()
-    err := wails.Run(&options.App{
-        Title:     "local-first-llm-notebook",
-        Width:     1024,
-        Height:    768,
-        Assets:    assets,
-        OnStartup: app.startup,
-        Bind: []interface{}{
-            app,
-        },
-    })
+	// Create an instance of the app structure
+	app := NewApp()
 
-    if err != nil {
-        log.Fatal(err)
-    }
+	// Create application with options
+	err := wails.Run(&options.App{
+		Title:  "Local-first LLM Notebook",
+		Width:  1280,
+		Height: 800,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		OnStartup:        app.OnStartup,
+		Bind: []interface{}{
+			app,
+		},
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }

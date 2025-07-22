@@ -1,122 +1,147 @@
-// File Name: src/components/SourcesPanel.tsx
-
-import { Box, Button, Typography, Chip, Divider, IconButton, Tooltip, List, ListItem, ListItemButton, ListItemIcon, ListItemText } from '@mui/material';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import CloseIcon from '@mui/icons-material/Close';
-import FunctionsIcon from '@mui/icons-material/Functions';
-import DriveFolderUploadIcon from '@mui/icons-material/DriveFolderUpload';
+import React, { useEffect, useState } from 'react';
+import {
+	Box,
+	Typography,
+	List,
+	ListItem,
+	ListItemButton,
+	ListItemIcon,
+	ListItemText,
+	Divider,
+	IconButton,
+	Tooltip,
+	Chip,
+} from '@mui/material';
+import FolderIcon from '@mui/icons-material/Folder';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import React from 'react';
-import { useChatSessionStore } from '@/store/useChatSessionStore';
-import { fileSystemService } from '@/services/FileSystemService';
+import LogoutIcon from '@mui/icons-material/Logout';
 
-export const SourcesPanel = ({ children }: { children: React.ReactNode }) => {
-    const { 
-        sessions, 
-        activeSessionId, 
-        setActiveSessionId, 
-        isProjectOpen, 
-        projectName, 
-        openProject, 
-        closeProject, 
-        loadSessions, 
-        addFileToContext 
-    } = useChatSessionStore();
+// ИМПОРТЫ НОВОЙ АРХИТЕКТУРЫ
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useFileStore, FileInfo } from '../store/useFileStore';
+import { ListFiles } from '../../wailsjs/go/main/App';
 
-    const { setProjectFileTreeContext, projectFileTreeContext } = useChatSessionStore(state => ({
-        setProjectFileTreeContext: state.setProjectFileTreeContext,
-        projectFileTreeContext: state.projectFileTreeContext
-    }));
+/**
+ * @component SourcesPanel
+ * @description Полностью переписанная панель для отображения файлов.
+ * - Использует `useSettingsStore` для получения корневой директории.
+ * - Использует `useFileStore` для хранения списка файлов и активного файла.
+ * - Вызывает Go-функцию `ListFiles` для получения данных.
+ * - Старая логика (useChatSessionStore, fileSystemService) полностью удалена.
+ */
+export const SourcesPanel: React.FC = () => {
+	// Получаем данные из наших новых, правильных хранилищ
+	const { rootDirectory, setRootDirectory } = useSettingsStore();
+	const { files, setFiles, activeFilePath, setActiveFilePath } = useFileStore();
+	const [isLoading, setIsLoading] = useState(false);
 
-    const handleScanProject = async () => {
-        const tree = await fileSystemService.getProjectFileTree();
-        if (tree) {
-            setProjectFileTreeContext(tree);
-        }
-    };
-    
-    const handleChangeRootDirectory = async () => {
-        const handle = await fileSystemService.promptAndSetDirectory();
-        if (handle) {
-            await loadSessions();
-        }
-    };
-    
-    const handleAddFileToContext = async (fileName: string) => {
-        try {
-            const content = await fileSystemService.readFile(fileName);
-            addFileToContext({ fileName, content });
-        } catch (error) {
-            console.error(`Failed to read file ${fileName} for context:`, error);
-        }
-    };
+	/**
+	 * @effect Загрузка списка файлов
+	 * @description Срабатывает, когда `rootDirectory` изменяется.
+	 * Вызывает Go-функцию `ListFiles` и сохраняет результат в `useFileStore`.
+	 */
+	useEffect(() => {
+		if (rootDirectory) {
+			setIsLoading(true);
+			ListFiles(rootDirectory)
+				.then((fileList) => {
+					// Сортируем: сначала папки, потом файлы, все по алфавиту
+					const sorted = fileList.sort((a, b) => {
+						if (a.isDirectory !== b.isDirectory) {
+							return a.isDirectory ? -1 : 1;
+						}
+						return a.name.localeCompare(b.name);
+					});
+					setFiles(sorted);
+				})
+				.catch((error) => {
+					console.error('Failed to list files:', error);
+					setFiles([]); // В случае ошибки показываем пустой список
+				})
+				.finally(() => {
+					setIsLoading(false);
+				});
+		} else {
+			// Если директория не выбрана (например, после "закрытия" проекта), очищаем список
+			setFiles([]);
+		}
+	}, [rootDirectory, setFiles]);
 
-    return (
-        <Box sx={{ p: 2, bgcolor: 'background.paper', height: '100%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #e0e0e0' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexShrink: 0 }}>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>Контекст</Typography>
-                <Box>
-                    <Tooltip title="Сменить корневую папку">
-                         <IconButton onClick={handleChangeRootDirectory} size="small">
-                            <DriveFolderUploadIcon />
-                        </IconButton>
-                    </Tooltip>
-                    {children}
-                </Box>
-            </Box>
+	/**
+	 * @handler handleFileClick
+	 * @description Обрабатывает клик по файлу в списке.
+	 * Устанавливает его как активный, только если это не директория.
+	 */
+	const handleFileClick = (file: FileInfo) => {
+		if (!file.isDirectory) {
+			setActiveFilePath(file.path);
+		}
+		// TODO: В будущем можно добавить логику для раскрытия директорий
+	};
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0 }}>
-                <Button fullWidth variant="outlined" startIcon={<FolderOpenIcon />} sx={{ borderColor: '#e0e0e0', color: 'text.primary', justifyContent: 'flex-start' }} onClick={openProject}>
-                    Открыть проект...
-                </Button>
+	/**
+	 * @handler handleCloseProject
+	 * @description "Закрывает" проект, очищая корневую директорию.
+	 * Это приведет к отображению `SetupDirectoryDialog` в `App.tsx`.
+	 */
+	const handleCloseProject = () => {
+		setActiveFilePath(null);
+		setRootDirectory('');
+	};
 
-                {isProjectOpen && (
-                    <Button fullWidth variant={projectFileTreeContext ? "contained" : "outlined"} startIcon={<FunctionsIcon />} sx={{ borderColor: '#e0e0e0', color: projectFileTreeContext ? 'white' : 'text.primary', justifyContent: 'flex-start' }} onClick={handleScanProject}>
-                        {projectFileTreeContext ? "Контекст загружен" : "Загрузить контекст"}
-                    </Button>
-                )}
-                
-                {isProjectOpen && projectName && (
-                    <Box>
-                        <Chip label={`Проект: ${projectName}`} onDelete={closeProject} deleteIcon={<CloseIcon />} color="primary" variant="outlined" sx={{ maxWidth: '100%', mt: 1 }} />
-                    </Box>
-                )}
-            </Box>
+	return (
+		<Box sx={{ p: 2, bgcolor: 'background.paper', height: '100%', display: 'flex', flexDirection: 'column', borderRight: '1px solid', borderColor: 'divider' }}>
+			<Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexShrink: 0 }}>
+				<Typography variant="h6" sx={{ fontWeight: 600 }}>
+					Explorer
+				</Typography>
+				<Tooltip title="Close Project">
+					<IconButton onClick={handleCloseProject} size="small">
+						<LogoutIcon />
+					</IconButton>
+				</Tooltip>
+			</Box>
 
-            <Divider sx={{ my: 2 }} />
+			{rootDirectory && (
+				<Chip
+					label={rootDirectory}
+					size="small"
+					sx={{ maxWidth: '100%', mb: 1, justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }}
+				/>
+			)}
 
-            <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-                <Typography variant="overline" color="text.secondary">Файлы</Typography>
-                <List dense>
-                    {sessions.map((session) => (
-                        <ListItem 
-                            key={session.id} 
-                            disablePadding
-                            secondaryAction={
-                                <Tooltip title="Добавить в контекст">
-                                    <IconButton edge="end" onClick={() => handleAddFileToContext(session.id)}>
-                                        <AddCircleOutlineIcon fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                            }
-                        >
-                            <ListItemButton
-                                selected={session.id === activeSessionId}
-                                onClick={() => setActiveSessionId(session.id)}
-                            >
-                                <ListItemIcon sx={{minWidth: '32px'}}>
-                                    <ArticleOutlinedIcon fontSize="small" />
-                                </ListItemIcon>
-                                <ListItemText 
-                                    primary={session.label} 
-                                    primaryTypographyProps={{ style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}}
-                                />
-                            </ListItemButton>
-                        </ListItem>
-                    ))}
-                </List>
-            </Box>
-        </Box>
-    );
+			<Divider sx={{ my: 1 }} />
+
+			<Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
+				{isLoading ? (
+					<Typography sx={{ p: 2, color: 'text.secondary' }}>Loading...</Typography>
+				) : (
+					<List dense>
+						{files.map((file) => (
+							<ListItem key={file.path} disablePadding>
+								<ListItemButton
+									selected={file.path === activeFilePath}
+									onClick={() => handleFileClick(file)}
+									// Директории делаем некликабельными для выбора
+									disabled={file.isDirectory}
+								>
+									<ListItemIcon sx={{ minWidth: '32px' }}>
+										{file.isDirectory ? (
+											<FolderIcon fontSize="small" />
+										) : (
+											<ArticleOutlinedIcon fontSize="small" />
+										)}
+									</ListItemIcon>
+									<ListItemText
+										primary={file.name}
+										primaryTypographyProps={{ style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }}
+									/>
+								</ListItemButton>
+							</ListItem>
+						))}
+					</List>
+				)}
+			</Box>
+		</Box>
+	);
 };
