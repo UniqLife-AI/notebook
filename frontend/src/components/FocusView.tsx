@@ -13,7 +13,7 @@ import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArro
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { fileSystemService } from '@/services/FileSystemService';
 import { SetupDirectoryDialog } from './SetupDirectoryDialog';
-import { LogPanel } from './LogPanel';
+import TerminalComponent from './TerminalComponent'; // ИЗМЕНЕНИЕ: Импортируем наш терминал
 import { ChatSettingsDialog } from './ChatSettingsDialog';
 import { CommandPalette } from './CommandPalette';
 import { useCommandPaletteStore } from '@/store/useCommandPaletteStore';
@@ -34,7 +34,6 @@ export default function FocusView() {
 
     const { isInitialized, needsSetup, setInitialized, setNeedsSetup } = useSettingsStore();
     const { toggle: toggleCommandPalette } = useCommandPaletteStore();
-    // ИЗМЕНЕНИЕ: Получаем loadSessions здесь
     const { createNewSession, loadSessions } = useChatSessionStore();
 
     useEffect(() => {
@@ -55,15 +54,13 @@ export default function FocusView() {
             const success = await fileSystemService.initialize();
             if (success) {
                 setNeedsSetup(false);
-                // ИЗМЕНЕНИЕ: Загружаем сессии только после успешной инициализации
-                await loadSessions(); 
+                await loadSessions();
             } else {
                 setNeedsSetup(true);
             }
             setInitialized(true);
         };
         initializeApp();
-    // Добавляем loadSessions в массив зависимостей
     }, [setInitialized, setNeedsSetup, loadSessions]);
     
     const handleToggleLogPanel = () => {
@@ -121,7 +118,7 @@ export default function FocusView() {
                             </Panel>
                             <PanelResizeHandle style={{ height: '5px', background: isLogPanelVisible ? '#e0e0e0' : 'transparent', cursor: 'row-resize' }} />
                             <Panel ref={logPanelRef} collapsible={true} defaultSize={30} minSize={10} collapsedSize={0} onCollapse={() => setIsLogPanelVisible(false)} onExpand={() => setIsLogPanelVisible(true)}>
-                                <LogPanel />
+                                <TerminalComponent /> 
                             </Panel>
                         </PanelGroup>
                     </Panel>

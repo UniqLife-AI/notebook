@@ -1,12 +1,12 @@
 # Notebook (by UniqLife-AI)
 
-An integrated thinking environment that combines local-first knowledge management with powerful, private AI interaction. It's designed for developers, researchers, and anyone who wants to build a "second brain" that is truly their own.
+An integrated thinking environment that combines local-first knowledge management with powerful, private AI interaction. It's a cross-platform desktop application designed for developers, researchers, and anyone who wants to build a "second brain" that is truly their own.
 
 ---
 
 ### ⚠️ Alpha Stage / Work in Progress ⚠️
 
-**This project is in the very early stages of development and is being built in public.** The current functionality is a proof-of-concept for the core chat interface. Many of the features described in the roadmap are not yet implemented. Expect bugs and frequent changes.
+**This project is in the very early stages of development and is being built in public.** The current functionality is a proof-of-concept for the core interface and terminal. Many of the features described in the roadmap are not yet implemented. Expect bugs and frequent changes.
 
 ---
 
@@ -22,25 +22,27 @@ The ultimate goal is to create a powerful, private, and extensible thinking tool
 
 ## ✅ Current Features (What Works Right Now)
 
-*   **Core:** A stable, three-panel, resizable interface.
-*   **Chat:** A fully functional, streaming chat with Google Gemini models.
-*   **Context:** Image pasting from the clipboard for multimodal queries. The AI remembers the image in the current session.
-*   **UX:** Interactive controls for each message (Delete, Copy, etc.).
-*   **Rendering:** Full Markdown support in chat, including beautiful, syntax-highlighted code blocks with a "Copy" button.
-*   **Settings:** A working dialog for managing your API key, model, and temperature.
+*   **Core:** A stable, three-panel, resizable interface built with Wails.
+*   **Integrated Terminal:** A working, interactive PowerShell terminal integrated directly into the application.
+*   **Chat:** A functional chat interface (backend logic pending).
+*   **UX:** Foundational UI components for sources, drafts, and settings.
 
 ## 🚀 Getting Started
+
+To run this project, you will need Go and the Wails CLI installed.
 
 ```bash
 # Clone the repository
 git clone https://github.com/UniqLife-AI/notebook.git
 cd notebook
 
-# Install dependencies
+# Install frontend dependencies
+cd frontend
 npm install
+cd ..
 
-# Run the development server
-npm run dev
+# Run the application in development mode
+wails dev
 ```
 
 ---
