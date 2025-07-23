@@ -1,21 +1,22 @@
 // File: frontend/src/App.tsx
-// Намерение: Окончательное исправление. Условие проверки результата
-// от диалогового окна приведено в соответствие с фактическим возвращаемым
-// значением ("Yes") от Wails API на платформе Windows.
+// Намерение: Оркестрировать процесс удаления: сначала асинхронно удалить
+// файл, затем синхронно обновить состояние UI.
 
 import React, { useState, useEffect } from 'react';
-import { useSettingsStore } from './store/useSettingsStore';
-import SetupDirectoryDialog from './components/SetupDirectoryDialog';
-import { MainView } from './components/MainView';
-import { CommandPalette } from './components/CommandPalette';
-import { useCommandPaletteStore } from './store/useCommandPaletteStore';
-import { ChatSettingsDialog } from './components/ChatSettingsDialog';
-import { NewChatDialog } from './components/NewChatDialog';
-import { useAppStore, View, ChatSession } from './store/useAppStore';
-import { useChatSettingsStore } from './store/useChatSettingsStore';
-import { useNotifier } from './hooks/useNotifier';
-import { LoadChatSessions, GetChatSessionPath, ShowConfirmationDialog } from '../wailsjs/go/main/App';
-import ChatPersistenceService from './services/ChatPersistenceService';
+import { useSettingsStore } from '@/store/useSettingsStore';
+import SetupDirectoryDialog from '@/components/SetupDirectoryDialog';
+import { MainView } from '@/components/MainView';
+import { CommandPalette } from '@/components/CommandPalette';
+import { useCommandPaletteStore } from '@/store/useCommandPaletteStore';
+import { ChatSettingsDialog } from '@/components/ChatSettingsDialog';
+import { NewChatDialog } from '@/components/NewChatDialog';
+import { useAppStore, View, ChatSession } from '@/store/useAppStore';
+import { useChatSettingsStore } from '@/store/useChatSettingsStore';
+import { useNotifier } from '@/hooks/useNotifier';
+import { useHasHydrated } from '@/hooks/useHasHydrated';
+// ИСПРАВЛЕНИЕ: Импортируем DeleteChatSession здесь.
+import { LoadChatSessions, GetChatSessionPath, ShowConfirmationDialog, DeleteChatSession } from 'wailsjs/go/main/App.js';
+import ChatPersistenceService from '@/services/ChatPersistenceService';
 
 function App() {
     const { workspaceDir, getActiveDirectory, projectDir } = useSettingsStore();
@@ -23,10 +24,11 @@ function App() {
     const { open: openCommandPalette } = useCommandPaletteStore();
     const { model, temperature } = useChatSettingsStore();
     const { notifySuccess, notifyError } = useNotifier();
+    const hasHydrated = useHasHydrated();
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isNewChatOpen, setIsNewChatOpen] = useState(false);
-    const [isLogPanelVisible, setIsLogPanelVisible] = useState(true);
+    const [isLogPanelVisible, setIsLogPanelVisible] = useState(false);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -40,19 +42,20 @@ function App() {
     }, [openCommandPalette]);
 
     useEffect(() => {
+        if (!hasHydrated) { return; }
         const activeDir = getActiveDirectory();
         if (activeDir) {
             LoadChatSessions(activeDir).then(chatFiles => {
-                const sessions = (chatFiles || [])
-                    .map(file => ChatPersistenceService.parse(file.path, file.content))
-                    .filter((s): s is ChatSession => s !== null);
+                const sessions = (chatFiles || []).map(file => ChatPersistenceService.parse(file.path, file.content)).filter((s): s is ChatSession => s !== null);
                 hydrateSessions(sessions);
             }).catch(error => {
                 console.error('Ошибка загрузки сессий чата:', error);
                 notifyError('Не удалось загрузить сессии чатов.');
             });
+        } else {
+            hydrateSessions([]);
         }
-    }, [workspaceDir, projectDir, hydrateSessions, getActiveDirectory, notifyError]);
+    }, [workspaceDir, projectDir, hasHydrated, getActiveDirectory, hydrateSessions, notifyError]);
 
     const handleCreateSession = async (fileName: string) => {
         const activeDirectory = getActiveDirectory();
@@ -63,13 +66,7 @@ function App() {
         try {
             const title = fileName.replace(/\.md$/, '');
             const filePath = await GetChatSessionPath(activeDirectory, fileName);
-            const newSession = await addSession({
-                id: filePath,
-                title: title,
-                model,
-                temperature,
-                createdAt: new Date().toISOString(),
-            });
+            const newSession = await addSession({ id: filePath, title: title, model, temperature, createdAt: new Date().toISOString() });
             const newView: View = { id: newSession.id, type: 'chat', title: newSession.title };
             openView(newView);
             setIsNewChatOpen(false);
@@ -81,46 +78,38 @@ function App() {
     };
 
     const handleCloseView = async (view: View) => {
-        if (view.type === 'chat') {
-            const result = await ShowConfirmationDialog(
-                'Подтверждение удаления',
-                `Вы уверены, что хотите навсегда удалить чат "${view.title}"? Это действие необратимо.`
-            );
-            
-            // ИСПРАВЛЕНИЕ: Сравниваем с "Yes", так как это фактическое значение, возвращаемое Wails.
-            if (result === 'Yes') {
-                await closeChatView(view.id);
-                notifySuccess(`Чат "${view.title}" удален.`);
-            }
-        } else {
+        if (view.type === 'file') {
             closeFileView(view.id);
+            return;
+        }
+
+        if (view.type === 'chat') {
+            const result = await ShowConfirmationDialog('Подтверждение удаления', `Вы уверены, что хотите навсегда удалить чат "${view.title}"? Это действие необратимо.`);
+            if (result === 'Yes') {
+                try {
+                    // Шаг 1: Асинхронно удаляем файл.
+                    await DeleteChatSession(view.id);
+                } catch (err) {
+                    console.error("Не удалось удалить файл чата, но вкладка все равно будет закрыта:", err);
+                    notifyError("Ошибка при удалении файла чата.");
+                } finally {
+                    // Шаг 2: Синхронно обновляем состояние UI.
+                    closeChatView(view.id);
+                    notifySuccess(`Чат "${view.title}" удален.`);
+                }
+            }
         }
     };
 
-    if (!workspaceDir) {
-        return <SetupDirectoryDialog />;
-    }
+    if (!hasHydrated) { return null; }
+    if (!workspaceDir) { return <SetupDirectoryDialog />; }
 
     return (
         <>
-            <MainView
-                isLogPanelVisible={isLogPanelVisible}
-                onNewChat={() => setIsNewChatOpen(true)}
-                onCloseView={handleCloseView}
-            />
-            <CommandPalette
-                onOpenSettings={() => setIsSettingsOpen(true)}
-                onNewChat={() => setIsNewChatOpen(true)}
-            />
-            <ChatSettingsDialog
-                open={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-            />
-            <NewChatDialog
-                open={isNewChatOpen}
-                onClose={() => setIsNewChatOpen(false)}
-                onCreate={handleCreateSession}
-            />
+            <MainView isLogPanelVisible={isLogPanelVisible} onNewChat={() => setIsNewChatOpen(true)} onCloseView={handleCloseView} />
+            <CommandPalette onOpenSettings={() => setIsSettingsOpen(true)} onNewChat={() => setIsNewChatOpen(true)} />
+            <ChatSettingsDialog open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+            <NewChatDialog open={isNewChatOpen} onClose={() => setIsNewChatOpen(false)} onCreate={handleCreateSession} />
         </>
     );
 }
