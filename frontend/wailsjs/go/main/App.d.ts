@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function DeleteChatSession(arg1:string):Promise<void>;
 
+export function GetChatSessionPath(arg1:string,arg2:string):Promise<string>;
+
 export function ListFiles(arg1:string):Promise<Array<main.FileInfo>>;
 
 export function LoadChatSessions(arg1:string):Promise<Array<main.ChatFile>>;
@@ -13,6 +15,8 @@ export function ReadFile(arg1:string):Promise<string>;
 export function SaveChatSession(arg1:string,arg2:string):Promise<void>;
 
 export function SelectDirectory(arg1:string):Promise<string>;
+
+export function ShowConfirmationDialog(arg1:string,arg2:string):Promise<string>;
 
 export function TerminalCommand(arg1:string):Promise<string>;
 

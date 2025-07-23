@@ -6,6 +6,10 @@ export function DeleteChatSession(arg1) {
   return window['go']['main']['App']['DeleteChatSession'](arg1);
 }
 
+export function GetChatSessionPath(arg1, arg2) {
+  return window['go']['main']['App']['GetChatSessionPath'](arg1, arg2);
+}
+
 export function ListFiles(arg1) {
   return window['go']['main']['App']['ListFiles'](arg1);
 }
@@ -24,6 +28,10 @@ export function SaveChatSession(arg1, arg2) {
 
 export function SelectDirectory(arg1) {
   return window['go']['main']['App']['SelectDirectory'](arg1);
+}
+
+export function ShowConfirmationDialog(arg1, arg2) {
+  return window['go']['main']['App']['ShowConfirmationDialog'](arg1, arg2);
 }
 
 export function TerminalCommand(arg1) {
