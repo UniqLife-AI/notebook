@@ -6,8 +6,11 @@ import ThemeRegistry from './components/ThemeRegistry';
 import { NotificationsProvider } from './components/NotificationsProvider';
 import './App.css';
 
-// Определяем пропсы, которые ожидает MainView.
-// Я создал этот интерфейс на основе твоей ошибки, чтобы было наглядно.
+// --- НОВЫЕ ИМПОРТЫ ---
+import { useChatSessionStore } from './store/useChatSessionStore';
+import { v4 as uuidv4 } from 'uuid';
+
+
 interface MainViewProps {
 	isLogPanelVisible: boolean;
 	onToggleLogPanel: () => void;
@@ -17,9 +20,10 @@ interface MainViewProps {
 
 function App() {
 	const rootDirectory = useSettingsStore((state) => state.rootDirectory);
+	// --- ПОЛУЧАЕМ ФУНКЦИЮ ИЗ СТОРА ЧАТА ---
+	const { addSession } = useChatSessionStore();
 
-	// --- Управление состоянием для MainView ---
-	// ИЗМЕНЕНО: Панель терминала теперь видна по умолчанию для проверки layout.
+
 	const [isLogPanelVisible, setIsLogPanelVisible] = useState(true);
 
 	const handleToggleLogPanel = () => {
@@ -27,17 +31,23 @@ function App() {
 	};
 
 	const handleOpenSettings = () => {
-		// TODO: Implement settings dialog logic
 		console.log("Settings dialog should open.");
 	};
 
+	// --- ИЗМЕНЕНА ЛОГИКА СОЗДАНИЯ ЧАТА ---
 	const handleNewChat = () => {
-		// TODO: Implement new chat dialog logic
-		console.log("New chat dialog should open.");
+		// Теперь эта функция создает полноценную сессию с дефолтными значениями
+		addSession({
+			// ID пока генерируем на лету. В будущем это будет путь к файлу.
+			id: `chat-session-${uuidv4()}`, 
+			title: 'New Chat',
+			model: 'gpt-4o', // Модель по умолчанию
+			temperature: 0.7,    // Температура по умолчанию
+			createdAt: new Date().toISOString(),
+		});
 	};
 	// -----------------------------------------
 
-	// Собираем пропсы в один объект для чистоты
 	const mainViewProps: MainViewProps = {
 		isLogPanelVisible,
 		onToggleLogPanel: handleToggleLogPanel,
@@ -50,7 +60,6 @@ function App() {
 			<NotificationsProvider>
 				<div id="App">
 					{rootDirectory ? (
-						// Теперь мы передаем все необходимые пропсы в MainView
 						<MainView {...mainViewProps} />
 					) : (
 						<SetupDirectoryDialog />

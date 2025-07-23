@@ -1,51 +1,34 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 
-// =================================================================
-// 1. ИНТЕРФЕЙСЫ ДАННЫХ
-// =================================================================
+// Интерфейсы Message и ChatSession остаются без изменений
 
-/**
- * @interface Message
- * @description Представляет одно сообщение в сессии чата.
- */
 export interface Message {
-	id: string;           // Уникальный ID для CRUD операций
-	turn: number;         // Номер "витка" диалога (вопрос-ответ)
+	id: string;
+	turn: number;
 	role: 'user' | 'assistant';
 	content: string;
-	tokenCount: number;   // Количество токенов в сообщении
+	tokenCount: number;
 }
 
-/**
- * @interface ChatSession
- * @description Представляет полную сессию чата, включая метаданные.
- */
 export interface ChatSession {
-	id: string;           // Уникальный ID сессии (обычно путь к .md файлу)
+	id: string;
 	title: string;
-	model: string;        // Используемая модель (например, 'gpt-4o')
+	model: string;
 	temperature: number;
 	messages: Message[];
 	totalTokenCount: number;
-	createdAt: string;    // Дата создания в формате ISO
+	createdAt: string;
 }
 
-// =================================================================
-// 2. ИНТЕРФЕЙС СОСТОЯНИЯ И ФУНКЦИЙ (ACTIONS)
-// =================================================================
-
-/**
- * @interface ChatSessionState
- * @description Определяет полную структуру хранилища Zustand.
- */
 interface ChatSessionState {
-	sessions: Record<string, ChatSession>; // Объект для быстрого доступа к сессиям по ID
-	activeSessionId: string | null;        // ID текущей активной сессии (для вкладок)
+	sessions: Record<string, ChatSession>;
+	activeSessionId: string | null;
 
 	// --- Функции для управления сессиями ---
 	addSession: (sessionData: Omit<ChatSession, 'messages' | 'totalTokenCount'>) => ChatSession;
 	setActiveSessionId: (id: string | null) => void;
+	closeSession: (sessionId: string) => void; // <-- ДОБАВЛЕНО
 	
 	// --- Функции для управления сообщениями ---
 	addMessage: (sessionId: string, messageData: Omit<Message, 'id'>) => void;
@@ -56,10 +39,6 @@ interface ChatSessionState {
 	// --- Вспомогательные функции ---
 	updateTokenCount: (sessionId: string, messageId: string, count: number) => void;
 }
-
-// =================================================================
-// 3. РЕАЛИЗАЦИЯ ХРАНИЛИЩА
-// =================================================================
 
 export const useChatSessionStore = create<ChatSessionState>((set) => ({
 	// --- Начальное состояние ---
@@ -81,14 +60,29 @@ export const useChatSessionStore = create<ChatSessionState>((set) => ({
 				...state.sessions,
 				[newSession.id]: newSession,
 			},
-			activeSessionId: newSession.id, // Новая сессия сразу становится активной
+			activeSessionId: newSession.id,
 		}));
 		return newSession;
 	},
 
+	// --- НОВАЯ ФУНКЦИЯ ---
+	closeSession: (sessionId) => set(state => {
+		const { [sessionId]: _, ...remainingSessions } = state.sessions;
+		
+		// Если закрываемая вкладка была активной, сбрасываем активный ID
+		// В будущем можно делать активной соседнюю вкладку
+		const newActiveId = state.activeSessionId === sessionId ? null : state.activeSessionId;
+
+		return {
+			sessions: remainingSessions,
+			activeSessionId: newActiveId,
+		};
+	}),
+
+	// Остальные функции без изменений...
 	addMessage: (sessionId, messageData) => set((state) => {
 		const session = state.sessions[sessionId];
-		if (!session) return {}; // Сессия не найдена, ничего не делаем
+		if (!session) return {};
 
 		const newMessage: Message = { ...messageData, id: uuidv4() };
 		
@@ -106,12 +100,9 @@ export const useChatSessionStore = create<ChatSessionState>((set) => ({
 	editMessage: (sessionId, messageId, newContent) => set(state => {
 		const session = state.sessions[sessionId];
 		if (!session) return {};
-
-		// При реальной реализации здесь нужно будет пересчитывать токены
 		const updatedMessages = session.messages.map(msg => 
 			msg.id === messageId ? { ...msg, content: newContent } : msg
 		);
-
 		return {
 			sessions: { ...state.sessions, [sessionId]: { ...session, messages: updatedMessages } },
 		};
@@ -120,12 +111,9 @@ export const useChatSessionStore = create<ChatSessionState>((set) => ({
 	deleteMessage: (sessionId, messageId) => set(state => {
 		const session = state.sessions[sessionId];
 		if (!session) return {};
-		
 		const messageToDelete = session.messages.find(m => m.id === messageId);
 		if (!messageToDelete) return {};
-
 		const updatedMessages = session.messages.filter(msg => msg.id !== messageId);
-
 		return {
 			sessions: { 
 				...state.sessions, 
@@ -141,11 +129,9 @@ export const useChatSessionStore = create<ChatSessionState>((set) => ({
 	deleteTurn: (sessionId, turn) => set(state => {
 		const session = state.sessions[sessionId];
 		if (!session) return {};
-		
 		const messagesToKeep = session.messages.filter(msg => msg.turn !== turn);
 		const messagesToDelete = session.messages.filter(msg => msg.turn === turn);
 		const deletedTokens = messagesToDelete.reduce((sum, msg) => sum + msg.tokenCount, 0);
-
 		return {
 			sessions: { 
 				...state.sessions, 
@@ -161,7 +147,6 @@ export const useChatSessionStore = create<ChatSessionState>((set) => ({
 	updateTokenCount: (sessionId, messageId, count) => set(state => {
 		const session = state.sessions[sessionId];
 		if (!session) return {};
-		
 		let oldTokenCount = 0;
 		const updatedMessages = session.messages.map(msg => {
 			if (msg.id === messageId) {
@@ -170,9 +155,7 @@ export const useChatSessionStore = create<ChatSessionState>((set) => ({
 			}
 			return msg;
 		});
-
 		const tokenDiff = count - oldTokenCount;
-
 		return {
 			sessions: { 
 				...state.sessions, 
