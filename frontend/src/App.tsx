@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // <-- Добавлен useEffect
 import { useSettingsStore } from './store/useSettingsStore';
 import SetupDirectoryDialog from './components/SetupDirectoryDialog';
 import { MainView } from './components/MainView';
@@ -6,10 +6,9 @@ import ThemeRegistry from './components/ThemeRegistry';
 import { NotificationsProvider } from './components/NotificationsProvider';
 import './App.css';
 
-// --- НОВЫЕ ИМПОРТЫ ---
 import { useChatSessionStore } from './store/useChatSessionStore';
 import { v4 as uuidv4 } from 'uuid';
-
+import TokenizerService from './services/TokenizerService'; // <-- ИМПОРТ НАШЕГО СЕРВИСА
 
 interface MainViewProps {
 	isLogPanelVisible: boolean;
@@ -20,9 +19,13 @@ interface MainViewProps {
 
 function App() {
 	const rootDirectory = useSettingsStore((state) => state.rootDirectory);
-	// --- ПОЛУЧАЕМ ФУНКЦИЮ ИЗ СТОРА ЧАТА ---
 	const { addSession } = useChatSessionStore();
 
+	// --- ИНИЦИАЛИЗАЦИЯ ТОКЕНИЗАТОРА ---
+	useEffect(() => {
+		// Вызываем асинхронную инициализацию при первом рендере App
+		TokenizerService.init();
+	}, []); // Пустой массив зависимостей гарантирует однократный вызов
 
 	const [isLogPanelVisible, setIsLogPanelVisible] = useState(true);
 
@@ -34,19 +37,15 @@ function App() {
 		console.log("Settings dialog should open.");
 	};
 
-	// --- ИЗМЕНЕНА ЛОГИКА СОЗДАНИЯ ЧАТА ---
 	const handleNewChat = () => {
-		// Теперь эта функция создает полноценную сессию с дефолтными значениями
 		addSession({
-			// ID пока генерируем на лету. В будущем это будет путь к файлу.
 			id: `chat-session-${uuidv4()}`, 
 			title: 'New Chat',
-			model: 'gpt-4o', // Модель по умолчанию
-			temperature: 0.7,    // Температура по умолчанию
+			model: 'gpt-4o',
+			temperature: 0.7,
 			createdAt: new Date().toISOString(),
 		});
 	};
-	// -----------------------------------------
 
 	const mainViewProps: MainViewProps = {
 		isLogPanelVisible,

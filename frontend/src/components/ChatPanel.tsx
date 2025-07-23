@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, TextField, Button, CircularProgress } from '@mui/material';
+import { Box, Typography, Paper, TextField, Button } from '@mui/material';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import StopCircleIcon from '@mui/icons-material/StopCircle'; // <-- ИСПРАВЛЕННЫЙ ИМПОРТ
+import StopCircleIcon from '@mui/icons-material/StopCircle';
 import { useChatSessionStore } from '../store/useChatSessionStore';
+import TokenizerService from '../services/TokenizerService'; // <-- ИМПОРТ НАШЕГО СЕРВИСА
 
 interface ChatPanelProps {
 	sessionId: string;
@@ -26,19 +27,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ sessionId }) => {
 			? lastMessage.turn + 1 
 			: (lastMessage?.turn || 1);
 
+		// --- ИСПОЛЬЗУЕМ РЕАЛЬНЫЙ ПОДСЧЕТ ТОКЕНОВ ---
 		addMessage(sessionId, {
 			turn: nextTurn,
 			role: 'user',
 			content: userMessageContent,
-			tokenCount: userMessageContent.length,
+			tokenCount: TokenizerService.countTokens(userMessageContent), // <-- ИЗМЕНЕНО
 		});
 
 		setTimeout(() => {
+			const assistantResponse = `Симуляция ответа на сообщение: "${userMessageContent}".\nБэкенд пока не подключен.`;
+			
+			// --- ИСПОЛЬЗУЕМ РЕАЛЬНЫЙ ПОДСЧЕТ ТОКЕНОВ ---
 			addMessage(sessionId, {
 				turn: nextTurn,
 				role: 'assistant',
-				content: `Симуляция ответа на сообщение: "${userMessageContent}".\nБэкенд пока не подключен.`,
-				tokenCount: 42,
+				content: assistantResponse,
+				tokenCount: TokenizerService.countTokens(assistantResponse), // <-- ИЗМЕНЕНО
 			});
 			setIsSending(false);
 		}, 1500);
