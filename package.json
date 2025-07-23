@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "react-resizable-panels": "^3.0.3",
     "use-debounce": "^10.0.5"
   }
 }
