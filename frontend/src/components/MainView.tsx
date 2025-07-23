@@ -1,69 +1,111 @@
 import React from 'react';
-import { Box, Typography } from "@mui/material";
-// Импорт компонентов для изменяемых панелей
+import { Box, Typography, Tabs, Tab, IconButton } from "@mui/material";
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import CloseIcon from '@mui/icons-material/Close';
+import AddIcon from '@mui/icons-material/Add';
 
-// Импортируем наши главные компоненты для панелей
 import { SourcesPanel } from './SourcesPanel';
 import NoteEditor from "./NoteEditor";
-import TerminalComponent from "./TerminalComponent"; // Импортируем терминал
+import TerminalComponent from "./TerminalComponent";
+import { ChatPanel } from './ChatPanel';
+import { useChatSessionStore } from '../store/useChatSessionStore';
+import { useViewStore } from '../store/useViewStore';
 
-// Импортируем наш стор, чтобы знать, какой файл активен
-import { useFileStore } from '../store/useFileStore';
-
-/**
- * @interface MainViewProps
- * @description Интерфейс расширен, чтобы явно указать на использование `isLogPanelVisible`.
- */
 interface MainViewProps {
-	isLogPanelVisible: boolean; // Этот флаг будет управлять отображением терминала
-	onToggleLogPanel: () => void;
-	onOpenSettings: () => void;
+	isLogPanelVisible: boolean;
 	onNewChat: () => void;
 }
 
-/**
- * @component MainView
- * @description Компонент перестроен для поддержки трехпанельного интерфейса.
- * - Слева: `SourcesPanel`.
- * - Справа: Вертикальная группа панелей.
- * - Верхняя панель: `NoteEditor` или приветствие.
- * - Нижняя панель: `TerminalComponent`, чей размер можно изменять.
- * Отображение терминала управляется пропом `isLogPanelVisible`.
- */
-export const MainView = ({ isLogPanelVisible }: MainViewProps) => {
-	// Мы по-прежнему получаем активный файл из глобального хранилища.
-	const activeFilePath = useFileStore((state) => state.activeFilePath);
+export const MainView = ({ isLogPanelVisible, onNewChat }: MainViewProps) => {
+	const { openFilePath, activeTabId, setActiveTab, closeOpenFile } = useViewStore();
+	const { sessions, closeSession, setActiveSessionId } = useChatSessionStore();
+
+	const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
+		setActiveTab(newValue);
+		if (sessions[newValue]) {
+			setActiveSessionId(newValue);
+		} else {
+			setActiveSessionId(null);
+		}
+	};
+	
+	const handleCloseChatTab = (e: React.MouseEvent, sessionId: string) => {
+		e.stopPropagation();
+		closeSession(sessionId);
+	};
+
+	const handleCloseFileTab = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		closeOpenFile();
+	}
+
+	const openSessions = Object.values(sessions);
 
 	return (
-		// Главный контейнер, который использует Flexbox для расположения панелей в ряд.
 		<Box sx={{ display: 'flex', height: '100vh', width: '100vw', bgcolor: 'background.default' }}>
-			
-			{/* Левая панель: Наш файловый проводник */}
 			<Box sx={{ width: '300px', flexShrink: 0 }}>
 				<SourcesPanel />
 			</Box>
 
-			{/* Правая часть: Вертикальная группа с редактором и терминалом */}
 			<PanelGroup direction="vertical">
-				{/* Верхняя панель: Редактор или сообщение-заглушка */}
 				<Panel>
-					<Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
-						{activeFilePath ? (
-							// Если пользователь кликнул на файл, показываем редактор.
-							<NoteEditor filePath={activeFilePath} />
-						) : (
-							// Если файл еще не выбран, показываем приветствие.
-							<Box sx={{ p: 4, textAlign: 'center', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-								<Typography color="text.secondary">
-									Select a file from the explorer panel to view or edit it.
-								</Typography>
-							</Box>
-						)}
+					<Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+						<Box sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center' }}>
+							<Tabs 
+								value={activeTabId || false}
+								onChange={handleTabChange} 
+								variant="scrollable"
+								sx={{ flexGrow: 1 }}
+							>
+								{openFilePath && (
+									<Tab
+										value={openFilePath}
+										label={
+											<Box sx={{display: 'flex', alignItems: 'center'}}>
+												{openFilePath.split(/[/\\]/).pop()}
+												<IconButton size="small" onClick={handleCloseFileTab} sx={{ml: 1}}>
+													<CloseIcon fontSize="inherit" />
+												</IconButton>
+											</Box>
+										}
+									/>
+								)}
+								
+								{openSessions.map(session => (
+									<Tab 
+										key={session.id} 
+										value={session.id}
+										label={
+											<Box sx={{display: 'flex', alignItems: 'center'}}>
+												{session.title}
+												<IconButton size="small" onClick={(e) => handleCloseChatTab(e, session.id)} sx={{ml: 1}}>
+													<CloseIcon fontSize="inherit" />
+												</IconButton>
+											</Box>
+										} 
+									/>
+								))}
+							</Tabs>
+							<IconButton onClick={onNewChat} sx={{ ml: 1, mr: 1 }} title="New Chat">
+								<AddIcon />
+							</IconButton>
+						</Box>
+
+						<Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+							{activeTabId === openFilePath && openFilePath && <Box p={2}><NoteEditor filePath={openFilePath} /></Box>}
+							{activeTabId && sessions[activeTabId] && <ChatPanel sessionId={activeTabId} />}
+							
+							{!activeTabId && (
+								<Box sx={{ p: 4, textAlign: 'center', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+									<Typography color="text.secondary">
+										Select a file or start a new chat.
+									</Typography>
+								</Box>
+							)}
+						</Box>
 					</Box>
 				</Panel>
 
-				{/* Если флаг `isLogPanelVisible` true, показываем разделитель и панель терминала */}
 				{isLogPanelVisible && (
 					<>
 						<PanelResizeHandle style={{ height: '4px', background: '#333', borderTop: '1px solid #444', borderBottom: '1px solid #444' }} />
@@ -73,7 +115,6 @@ export const MainView = ({ isLogPanelVisible }: MainViewProps) => {
 					</>
 				)}
 			</PanelGroup>
-
 		</Box>
 	);
 };
