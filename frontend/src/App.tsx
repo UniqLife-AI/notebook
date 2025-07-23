@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // <-- Добавлен useEffect
+import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from './store/useSettingsStore';
 import SetupDirectoryDialog from './components/SetupDirectoryDialog';
 import { MainView } from './components/MainView';
@@ -7,47 +7,68 @@ import { NotificationsProvider } from './components/NotificationsProvider';
 import './App.css';
 
 import { useChatSessionStore } from './store/useChatSessionStore';
-import { v4 as uuidv4 } from 'uuid';
-import TokenizerService from './services/TokenizerService'; // <-- ИМПОРТ НАШЕГО СЕРВИСА
-
-interface MainViewProps {
-	isLogPanelVisible: boolean;
-	onToggleLogPanel: () => void;
-	onOpenSettings: () => void;
-	onNewChat: () => void;
-}
+import TokenizerService from './services/TokenizerService';
+import { NewChatDialog } from './components/NewChatDialog';
+import { LoadChatSessions } from '../wailsjs/go/main/App';
+import ChatPersistenceService from './services/ChatPersistenceService'; // <-- ВОТ НЕДОСТАЮЩИЙ ИМПОРТ
 
 function App() {
-	const rootDirectory = useSettingsStore((state) => state.rootDirectory);
-	const { addSession } = useChatSessionStore();
+	const { workspaceDir, getActiveDirectory, projectDir } = useSettingsStore();
+	const { addSession, hydrateSessions } = useChatSessionStore();
+	const [isNewChatDialogOpen, setIsNewChatDialogOpen] = useState(false);
 
-	// --- ИНИЦИАЛИЗАЦИЯ ТОКЕНИЗАТОРА ---
 	useEffect(() => {
-		// Вызываем асинхронную инициализацию при первом рендере App
 		TokenizerService.init();
-	}, []); // Пустой массив зависимостей гарантирует однократный вызов
+	}, []);
+
+	useEffect(() => {
+		const activeDir = getActiveDirectory();
+		if (activeDir) {
+			console.log(`Загрузка сессий чата из: ${activeDir}`);
+			LoadChatSessions(activeDir)
+				.then(chatFiles => {
+					if (chatFiles) {
+						const sessions = chatFiles
+							.map(file => ChatPersistenceService.parse(file.path, file.content))
+							.filter((session): session is NonNullable<typeof session> => session !== null);
+						
+						hydrateSessions(sessions);
+						console.log(`Загружено ${sessions.length} сессий.`);
+					} else {
+						hydrateSessions([]);
+						console.log(`Загружено 0 сессий.`);
+					}
+				})
+				.catch(error => {
+					console.error('Ошибка загрузки сессий чата:', error);
+				});
+		}
+	}, [workspaceDir, projectDir, hydrateSessions, getActiveDirectory]);
 
 	const [isLogPanelVisible, setIsLogPanelVisible] = useState(true);
 
-	const handleToggleLogPanel = () => {
-		setIsLogPanelVisible(prev => !prev);
-	};
+	const handleToggleLogPanel = () => setIsLogPanelVisible(prev => !prev);
+	const handleOpenSettings = () => console.log("Settings dialog should open.");
+	const handleNewChat = () => setIsNewChatDialogOpen(true);
 
-	const handleOpenSettings = () => {
-		console.log("Settings dialog should open.");
-	};
+	const handleCreateSession = (fileName: string) => {
+		const activeDirectory = getActiveDirectory();
+		if (!activeDirectory) return;
 
-	const handleNewChat = () => {
+		const title = fileName.replace(/\.md$/, '');
+		const filePath = [activeDirectory, '.ai-notebook', 'chats', fileName].join('\\');
+
 		addSession({
-			id: `chat-session-${uuidv4()}`, 
-			title: 'New Chat',
+			id: filePath,
+			title: title,
 			model: 'gpt-4o',
 			temperature: 0.7,
 			createdAt: new Date().toISOString(),
 		});
+		setIsNewChatDialogOpen(false);
 	};
 
-	const mainViewProps: MainViewProps = {
+	const mainViewProps = {
 		isLogPanelVisible,
 		onToggleLogPanel: handleToggleLogPanel,
 		onOpenSettings: handleOpenSettings,
@@ -58,11 +79,16 @@ function App() {
 		<ThemeRegistry>
 			<NotificationsProvider>
 				<div id="App">
-					{rootDirectory ? (
+					{workspaceDir ? (
 						<MainView {...mainViewProps} />
 					) : (
 						<SetupDirectoryDialog />
 					)}
+					<NewChatDialog
+						open={isNewChatDialogOpen}
+						onClose={() => setIsNewChatDialogOpen(false)}
+						onCreate={handleCreateSession}
+					/>
 				</div>
 			</NotificationsProvider>
 		</ThemeRegistry>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Box, Typography, Tabs, Tab, IconButton } from "@mui/material";
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import CloseIcon from '@mui/icons-material/Close';
@@ -18,7 +18,14 @@ interface MainViewProps {
 
 export const MainView = ({ isLogPanelVisible, onNewChat }: MainViewProps) => {
 	const { openFilePath, activeTabId, setActiveTab, closeOpenFile } = useViewStore();
-	const { sessions, closeSession, setActiveSessionId } = useChatSessionStore();
+	// ИСПРАВЛЕНИЕ: Получаем deleteSession вместо closeSession
+	const { sessions, activeSessionId, deleteSession, setActiveSessionId } = useChatSessionStore();
+
+	useEffect(() => {
+		if (activeSessionId) {
+			setActiveTab(activeSessionId);
+		}
+	}, [activeSessionId, setActiveTab]);
 
 	const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
 		setActiveTab(newValue);
@@ -29,9 +36,10 @@ export const MainView = ({ isLogPanelVisible, onNewChat }: MainViewProps) => {
 		}
 	};
 	
+	// ИСПРАВЛЕНИЕ: Вызываем deleteSession для удаления файла с диска
 	const handleCloseChatTab = (e: React.MouseEvent, sessionId: string) => {
 		e.stopPropagation();
-		closeSession(sessionId);
+		deleteSession(sessionId);
 	};
 
 	const handleCloseFileTab = (e: React.MouseEvent) => {
@@ -46,7 +54,6 @@ export const MainView = ({ isLogPanelVisible, onNewChat }: MainViewProps) => {
 			<Box sx={{ width: '300px', flexShrink: 0 }}>
 				<SourcesPanel />
 			</Box>
-
 			<PanelGroup direction="vertical">
 				<Panel>
 					<Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -70,7 +77,6 @@ export const MainView = ({ isLogPanelVisible, onNewChat }: MainViewProps) => {
 										}
 									/>
 								)}
-								
 								{openSessions.map(session => (
 									<Tab 
 										key={session.id} 
@@ -90,11 +96,9 @@ export const MainView = ({ isLogPanelVisible, onNewChat }: MainViewProps) => {
 								<AddIcon />
 							</IconButton>
 						</Box>
-
 						<Box sx={{ flexGrow: 1, overflow: 'auto' }}>
 							{activeTabId === openFilePath && openFilePath && <Box p={2}><NoteEditor filePath={openFilePath} /></Box>}
 							{activeTabId && sessions[activeTabId] && <ChatPanel sessionId={activeTabId} />}
-							
 							{!activeTabId && (
 								<Box sx={{ p: 4, textAlign: 'center', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
 									<Typography color="text.secondary">
@@ -105,7 +109,6 @@ export const MainView = ({ isLogPanelVisible, onNewChat }: MainViewProps) => {
 						</Box>
 					</Box>
 				</Panel>
-
 				{isLogPanelVisible && (
 					<>
 						<PanelResizeHandle style={{ height: '4px', background: '#333', borderTop: '1px solid #444', borderBottom: '1px solid #444' }} />

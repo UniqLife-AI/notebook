@@ -6,26 +6,33 @@ import {
 import FolderIcon from '@mui/icons-material/Folder';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
+import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
+import SwitchAccountOutlinedIcon from '@mui/icons-material/SwitchAccountOutlined';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFileStore, FileInfo } from '../store/useFileStore';
 import { useViewStore } from '../store/useViewStore';
-import { useChatSessionStore } from '../store/useChatSessionStore'; // <-- ВОТ НЕДОСТАЮЩИЙ ИМПОРТ
-import { ListFiles } from '../../wailsjs/go/main/App';
+import { ListFiles, SelectDirectory } from '../../wailsjs/go/main/App';
 
 export const SourcesPanel: React.FC = () => {
-	const { rootDirectory, setRootDirectory } = useSettingsStore();
+	// ИСПРАВЛЕНИЕ: Явно получаем workspaceDir, чтобы отслеживать его изменения
+	const { projectDir, workspaceDir, getActiveDirectory, setProjectDir, setWorkspaceDir } = useSettingsStore();
+	const activeDirectory = getActiveDirectory();
+
 	const { files, setFiles } = useFileStore();
 	const { activeTabId, setOpenFile } = useViewStore();
 	const [isLoading, setIsLoading] = useState(false);
 	const [showAllFiles, setShowAllFiles] = useState(false);
 
+	// ИСПРАВЛЕНИЕ 1: Список зависимостей теперь явно отслеживает и projectDir, и workspaceDir.
+	// Это гарантирует, что эффект перезапустится при смене любого из каталогов.
 	useEffect(() => {
-		if (rootDirectory) {
+		const currentActiveDir = getActiveDirectory();
+		if (currentActiveDir) {
 			setIsLoading(true);
-			ListFiles(rootDirectory)
+			ListFiles(currentActiveDir)
 				.then((fileList) => {
 					const sorted = fileList.sort((a, b) => {
 						if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
@@ -33,12 +40,12 @@ export const SourcesPanel: React.FC = () => {
 					});
 					setFiles(sorted);
 				})
-				.catch((error) => console.error('Failed to list files:', error))
+				.catch((error) => console.error('Ошибка получения списка файлов:', error))
 				.finally(() => setIsLoading(false));
 		} else {
 			setFiles([]);
 		}
-	}, [rootDirectory, setFiles]);
+	}, [projectDir, workspaceDir, setFiles, getActiveDirectory]);
 
 	const handleFileClick = (file: FileInfo) => {
 		if (!file.isDirectory) {
@@ -47,9 +54,34 @@ export const SourcesPanel: React.FC = () => {
 	};
 
 	const handleCloseProject = () => {
-		setRootDirectory('');
+		setProjectDir(null);
 		useViewStore.getState().closeOpenFile();
-		useChatSessionStore.getState().setActiveSessionId(null);
+	};
+
+	// ИСПРАВЛЕНИЕ 2: Обработчики теперь передают текущий каталог в бэкенд,
+	// чтобы диалог открывался в релевантной папке.
+	const handleOpenProject = async () => {
+		try {
+			// Открываем диалог в текущем активном каталоге
+			const path = await SelectDirectory(activeDirectory || '');
+			if (path) {
+				setProjectDir(path);
+			}
+		} catch (error) {
+			console.error('Ошибка выбора каталога проекта:', error);
+		}
+	};
+
+	const handleChangeWorkspace = async () => {
+		try {
+			// Открываем диалог в текущем основном каталоге
+			const path = await SelectDirectory(workspaceDir || '');
+			if (path) {
+				setWorkspaceDir(path);
+			}
+		} catch (error) {
+			console.error('Ошибка выбора основного каталога:', error);
+		}
 	};
 	
 	const filteredFiles = files.filter(file =>
@@ -57,27 +89,43 @@ export const SourcesPanel: React.FC = () => {
 	);
 
 	return (
-		<Box sx={{ p: 2, bgcolor: 'background.paper', height: '100%', display: 'flex', flexDirection: 'column', borderRight: '1px solid', borderColor: 'divider' }}>
+		<Box sx={{ p: 2, bgcolor: 'background.paper', height: '100%', display: 'flex', flexDirection: 'column' }}>
 			<Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexShrink: 0 }}>
-				<Typography variant="h6" sx={{ fontWeight: 600 }}>Explorer</Typography>
+				<Typography variant="h6" sx={{ fontWeight: 600 }}>
+					{projectDir ? 'Проводник Проекта' : 'Проводник Workspace'}
+				</Typography>
 				<Box>
-					<Tooltip title={showAllFiles ? "Show only Markdown files" : "Show all files"}>
+					<Tooltip title="Сменить основной каталог (Workspace)">
+						<IconButton onClick={handleChangeWorkspace} size="small">
+							<SwitchAccountOutlinedIcon />
+						</IconButton>
+					</Tooltip>
+					<Tooltip title="Открыть проект">
+						<IconButton onClick={handleOpenProject} size="small">
+							<FolderOpenOutlinedIcon />
+						</IconButton>
+					</Tooltip>
+					<Tooltip title="Закрыть проект">
+						<span>
+							<IconButton onClick={handleCloseProject} size="small" disabled={!projectDir}>
+								<LogoutIcon />
+							</IconButton>
+						</span>
+					</Tooltip>
+					<Tooltip title={showAllFiles ? "Показать только Markdown" : "Показать все файлы"}>
 						<IconButton onClick={() => setShowAllFiles(!showAllFiles)} size="small">
 							{showAllFiles ? <FilterListOffIcon /> : <FilterListIcon />}
 						</IconButton>
 					</Tooltip>
-					<Tooltip title="Close Project">
-						<IconButton onClick={handleCloseProject} size="small"><LogoutIcon /></IconButton>
-					</Tooltip>
 				</Box>
 			</Box>
-			{rootDirectory && (
-				<Chip label={rootDirectory} size="small" sx={{ maxWidth: '100%', mb: 1, justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }} />
+			{activeDirectory && (
+				<Chip label={activeDirectory} size="small" sx={{ maxWidth: '100%', mb: 1, justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }} />
 			)}
 			<Divider sx={{ my: 1 }} />
 			
 			<Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-				{isLoading ? <Typography sx={{ p: 2, color: 'text.secondary' }}>Loading...</Typography> : (
+				{isLoading ? <Typography sx={{ p: 2, color: 'text.secondary' }}>Загрузка...</Typography> : (
 					<List dense>
 						{filteredFiles.map((file) => (
 							<ListItem key={file.path} disablePadding>
