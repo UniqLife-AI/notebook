@@ -1,17 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
+	"io" // ИЗМЕНЕНО: Заменили io/ioutil на io
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath" // <-- ДОБАВЛЕН ИМПОРТ
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/transform"
 )
 
 //go:embed all:frontend/dist
@@ -65,7 +69,6 @@ func (a *App) WriteFile(filePath string, content string) error {
 }
 
 // FileInfo структура для передачи информации о файле на фронтенд.
-// @comment: Мы используем структуру, чтобы фронтенд знал, что рендерить (файл или папку).
 type FileInfo struct {
 	Name        string `json:"name"`
 	IsDirectory bool   `json:"isDirectory"`
@@ -73,7 +76,6 @@ type FileInfo struct {
 }
 
 // ListFiles сканирует указанную директорию и возвращает список файлов и папок.
-// @comment: Эта функция заменит старую логику из FileSystemService.
 func (a *App) ListFiles(dirPath string) ([]FileInfo, error) {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -92,14 +94,26 @@ func (a *App) ListFiles(dirPath string) ([]FileInfo, error) {
 	return files, nil
 }
 
-// TerminalCommand executes a command in the integrated terminal.
+// TerminalCommand executes a command and decodes its output from CP866 to UTF-8.
 func (a *App) TerminalCommand(command string) (string, error) {
 	cmd := exec.Command("powershell", "-Command", command)
 	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
+	reader := transform.NewReader(bytes.NewReader(output), charmap.CodePage866.NewDecoder())
+
+	// ИЗМЕНЕНО: Используем io.ReadAll вместо ioutil.ReadAll
+	utf8Output, readErr := io.ReadAll(reader)
+	if readErr != nil {
+		if err != nil {
+			return "", err
+		}
+		return "", readErr
 	}
-	return string(output), nil
+
+	if err != nil {
+		return string(utf8Output), err
+	}
+
+	return string(utf8Output), nil
 }
 
 func main() {
