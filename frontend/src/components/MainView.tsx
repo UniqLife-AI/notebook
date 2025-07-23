@@ -1,7 +1,6 @@
 // File: frontend/src/components/MainView.tsx
-// Намерение: 1. Добавить отладочный лог в обработчик закрытия вкладки.
-// 2. Изолировать проблемный TerminalComponent, рендеря его только тогда, когда панель видима.
-// Это должно предотвратить ошибку 'dimensions' и исправить баг.
+// Намерение: Добавить лог, который покажет, какие именно `openViews`
+// приходят в этот компонент для рендеринга.
 
 import React from 'react';
 import { Box, Typography, Tabs, Tab, IconButton } from "@mui/material";
@@ -23,14 +22,15 @@ interface MainViewProps {
 export const MainView = ({ isLogPanelVisible, onNewChat, onCloseView }: MainViewProps) => {
     const { openViews, activeViewId, setActiveView, sessions } = useAppStore();
 
+    // ОТЛАДКА: Показываем, какие вкладки пришли в компонент для рендера.
+    console.log(`[DEBUG][MainView] Рендеринг с openViews:`, openViews.map(v => v.id));
+
     const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
         setActiveView(newValue);
     };
 
     const handleCloseClick = (e: React.MouseEvent, view: View) => {
         e.stopPropagation();
-        // ОТЛАДКА: Шаг 1 - Проверяем, что клик по крестику инициирует вызов.
-        console.log(`[MainView] Инициировано закрытие для view.id: ${view.id}`);
         onCloseView(view);
     };
     
@@ -78,7 +78,6 @@ export const MainView = ({ isLogPanelVisible, onNewChat, onCloseView }: MainView
                         </Box>
                     </Box>
                 </Panel>
-                {/* ИСПРАВЛЕНИЕ: Рендерим терминал и его разделитель только если панель видима */}
                 {isLogPanelVisible && (
                     <>
                         <PanelResizeHandle style={{ height: '4px', background: '#333', borderTop: '1px solid #444', borderBottom: '1px solid #444' }} />
