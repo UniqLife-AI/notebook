@@ -9,5 +9,6 @@
   "author": {
     "name": "UniqLife",
     "email": "UniqLife@users.noreply.github.com"
-  }
+  },
+  "frontend:dir": "./frontend"
 }
