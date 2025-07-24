@@ -1,6 +1,7 @@
 # Wails build output
 /build/bin/
 /build/windows/
+/frontend/wailsjs/
 
 # Frontend build artifacts
 /frontend/dist
