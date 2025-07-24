@@ -31,6 +31,8 @@ go.sum
 project_scraper.py
 scrape_groups.config
 context.txt
+backend.txt
+frontend.txt
 
 /.ai-docs/
 /.ai-notebook/
