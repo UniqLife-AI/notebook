@@ -1,3 +1,8 @@
+// File: main.go
+// Намерение: Добавить новую функцию `CheckFileExists` для атомарной
+// проверки существования файла на диске. Это позволит фронтенду
+// безопасно проверять, можно ли создать новый чат, не перезаписав старый.
+
 package main
 
 import (
@@ -84,6 +89,22 @@ func (a *App) ReadFile(filePath string) (string, error) {
 // WriteFile записывает контент в файл по указанному пути.
 func (a *App) WriteFile(filePath string, content string) error {
 	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
+// ИЗМЕНЕНИЕ: Новая функция для проверки существования файла.
+// CheckFileExists проверяет, существует ли файл по указанному пути.
+func (a *App) CheckFileExists(filePath string) (bool, error) {
+	_, err := os.Stat(filePath)
+	if err == nil {
+		// Ошибки нет, значит файл или каталог существует.
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		// Ошибка "не существует" - это ожидаемый результат, а не сбой.
+		return false, nil
+	}
+	// Любая другая ошибка является непредвиденной.
+	return false, err
 }
 
 type FileInfo struct {

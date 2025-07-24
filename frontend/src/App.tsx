@@ -1,6 +1,6 @@
 // File: frontend/src/App.tsx
-// Намерение: Оркестрировать процесс удаления: сначала асинхронно удалить
-// файл, затем синхронно обновить состояние UI.
+// Намерение: Внедрить проверку на существование файла перед созданием
+// нового чата, чтобы предотвратить случайную перезапись данных.
 
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -14,8 +14,8 @@ import { useAppStore, View, ChatSession } from '@/store/useAppStore';
 import { useChatSettingsStore } from '@/store/useChatSettingsStore';
 import { useNotifier } from '@/hooks/useNotifier';
 import { useHasHydrated } from '@/hooks/useHasHydrated';
-// ИСПРАВЛЕНИЕ: Импортируем DeleteChatSession здесь.
-import { LoadChatSessions, GetChatSessionPath, ShowConfirmationDialog, DeleteChatSession } from 'wailsjs/go/main/App.js';
+// ИЗМЕНЕНИЕ: Импортируем новую Go-функцию CheckFileExists.
+import { LoadChatSessions, GetChatSessionPath, ShowConfirmationDialog, DeleteChatSession, CheckFileExists } from 'wailsjs/go/main/App.js';
 import ChatPersistenceService from '@/services/ChatPersistenceService';
 
 function App() {
@@ -66,6 +66,14 @@ function App() {
         try {
             const title = fileName.replace(/\.md$/, '');
             const filePath = await GetChatSessionPath(activeDirectory, fileName);
+
+            // ИЗМЕНЕНИЕ: Проверяем, существует ли файл, ПЕРЕД созданием.
+            const exists = await CheckFileExists(filePath);
+            if (exists) {
+                notifyError(`Чат с именем "${fileName}" уже существует.`);
+                return;
+            }
+
             const newSession = await addSession({ id: filePath, title: title, model, temperature, createdAt: new Date().toISOString() });
             const newView: View = { id: newSession.id, type: 'chat', title: newSession.title };
             openView(newView);
@@ -82,18 +90,15 @@ function App() {
             closeFileView(view.id);
             return;
         }
-
         if (view.type === 'chat') {
             const result = await ShowConfirmationDialog('Подтверждение удаления', `Вы уверены, что хотите навсегда удалить чат "${view.title}"? Это действие необратимо.`);
             if (result === 'Yes') {
                 try {
-                    // Шаг 1: Асинхронно удаляем файл.
                     await DeleteChatSession(view.id);
                 } catch (err) {
                     console.error("Не удалось удалить файл чата, но вкладка все равно будет закрыта:", err);
                     notifyError("Ошибка при удалении файла чата.");
                 } finally {
-                    // Шаг 2: Синхронно обновляем состояние UI.
                     closeChatView(view.id);
                     notifySuccess(`Чат "${view.title}" удален.`);
                 }
